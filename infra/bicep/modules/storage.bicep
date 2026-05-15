@@ -60,7 +60,7 @@ resource aiAccount 'Microsoft.CognitiveServices/accounts@2026-03-01' existing = 
 
 // Role assignment for AI Services to access the storage account
 resource storageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(resourceGroup().id, resourceName, aiServicesAccountName, 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
+  name: guid(resourceGroup().id, resourceName, aiServicesAccountName, 'ba92f5b4-2d11-453d-a403-e96b0029c9fe') // Storage Blob Data Contributor
   scope: storageAccount
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe') // Storage Blob Data Contributor

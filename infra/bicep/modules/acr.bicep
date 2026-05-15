@@ -43,10 +43,10 @@ resource containerRegistry 'Microsoft.ContainerRegistry/registries@2026-01-01-pr
 
 // AcrPull for the Foundry project managed identity — allows the hosted agent to pull images
 resource projectAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(resourceGroup().id, resourceName, aiProjectName, '7f951dda-4ed3-4680-a7ca-43fe172d538d')
+  name: guid(resourceGroup().id, resourceName, aiProjectName, '7f951dda-4ed3-4680-a7ca-43fe172d538d') // AcrPull
   scope: containerRegistry
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d') // AcrPull
     principalId: aiAccount::aiProject.identity.principalId
     principalType: 'ServicePrincipal'
   }

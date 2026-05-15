@@ -36,9 +36,10 @@ ACCOUNT_RESOURCE_ID=$(az resource list \
   --resource-type "Microsoft.CognitiveServices/accounts" \
   --query "[0].id" -o tsv)
 PROJECT_RESOURCE_ID="${ACCOUNT_RESOURCE_ID}/projects/${PROJECT_NAME}"
+ROLE_FOUNDRY_PM="eadc314b-1a2d-4efa-be10-5d325db5065e"  # Foundry Project Manager
 
 az role assignment create \
-  --role "Azure AI Project Manager" \
+  --role "${ROLE_FOUNDRY_PM}" \
   --assignee-object-id "${PRINCIPAL_ID}" \
   --assignee-principal-type "${PRINCIPAL_TYPE}" \
   --scope "${PROJECT_RESOURCE_ID}" \

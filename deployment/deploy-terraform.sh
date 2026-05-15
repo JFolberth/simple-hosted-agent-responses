@@ -64,6 +64,7 @@ _get() { echo "$OUTPUTS" | python3 -c "import sys,json; print(json.load(sys.stdi
 
 AI_ACCOUNT_NAME=$(      _get AZURE_AI_ACCOUNT_NAME)
 PROJECT_NAME=$(          _get AZURE_AI_PROJECT_NAME)
+PROJECT_ID=$(            _get AZURE_AI_PROJECT_ID)
 PROJECT_ENDPOINT=$(      _get AZURE_AI_PROJECT_ENDPOINT)
 ACR_ENDPOINT=$(          _get AZURE_CONTAINER_REGISTRY_ENDPOINT)
 MODEL_DEPLOYMENT_NAME=$( _get AZURE_AI_MODEL_DEPLOYMENT_NAME)
@@ -75,28 +76,24 @@ echo "    Project endpoint: ${PROJECT_ENDPOINT}"
 echo "    ACR             : ${ACR_ENDPOINT}"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Step 3: Assign Azure AI Project Manager at project scope
+# Step 3: Assign Foundry Project Manager (eadc314b) at project scope
 #
 # The Foundry data plane evaluates 'Microsoft.CognitiveServices/accounts/
 # AIServices/agents/write' at project scope. This role assignment is idempotent.
 # ─────────────────────────────────────────────────────────────────────────────
-echo "==> Assigning Azure AI Project Manager at project scope..."
+echo "==> Assigning Foundry Project Manager (eadc314b) at project scope..."
 PRINCIPAL_ID=$(az ad signed-in-user show --query id -o tsv)
-ACCOUNT_RESOURCE_ID=$(az resource list \
-  --name "${AI_ACCOUNT_NAME}" \
-  --resource-type "Microsoft.CognitiveServices/accounts" \
-  --query "[0].id" -o tsv)
-PROJECT_RESOURCE_ID="${ACCOUNT_RESOURCE_ID}/projects/${PROJECT_NAME}"
+ROLE_FOUNDRY_PM="eadc314b-1a2d-4efa-be10-5d325db5065e"  # Foundry Project Manager
 
 az role assignment create \
-  --role "Azure AI Project Manager" \
+  --role "${ROLE_FOUNDRY_PM}" \
   --assignee-object-id "${PRINCIPAL_ID}" \
   --assignee-principal-type User \
-  --scope "${PROJECT_RESOURCE_ID}" \
+  --scope "${PROJECT_ID}" \
   --output none 2>/dev/null || echo "    Role already assigned."
 
-echo "    Waiting 30s for RBAC propagation..."
-sleep 30
+echo "    Waiting 120s for RBAC propagation..."
+sleep 120
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 4: Authenticate Docker to ACR
@@ -167,18 +164,19 @@ AGENT_VERSION=$(echo "${AGENT_VERSION_RESPONSE}" | python3 -c "import sys,json; 
 # making model calls. This identity is only known after the version is created,
 # so the role must be granted here rather than in the infrastructure step.
 #
-# Role: Azure AI User (53ca6127) on the AI account
+# Role: Foundry User (53ca6127) on the AI account
 # ─────────────────────────────────────────────────────────────────────────────
-echo "==> Granting Azure AI User to agent version instance identity..."
+echo "==> Granting Foundry User (53ca6127) to agent version instance identity..."
 INSTANCE_PRINCIPAL=$(echo "${AGENT_VERSION_RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin)['instance_identity']['principal_id'])")
 SUBID=$(az account show --query id -o tsv)
 ACCOUNT_RESOURCE_ID=$(az resource list \
   --name "${AI_ACCOUNT_NAME}" \
   --resource-type "Microsoft.CognitiveServices/accounts" \
   --query "[0].id" -o tsv)
+ROLE_FOUNDRY_USER="53ca6127-db72-4b80-b1b0-d745d6d5456d"  # Foundry User
 
 az role assignment create \
-  --role "53ca6127-db72-4b80-b1b0-d745d6d5456d" \
+  --role "${ROLE_FOUNDRY_USER}" \
   --assignee-object-id "${INSTANCE_PRINCIPAL}" \
   --assignee-principal-type ServicePrincipal \
   --scope "${ACCOUNT_RESOURCE_ID}" \
