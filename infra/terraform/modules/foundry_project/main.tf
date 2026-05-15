@@ -66,7 +66,7 @@ resource "azapi_resource" "log_analytics_reader_role" {
     properties = {
       principalId      = azapi_resource.project.identity[0].principal_id
       principalType    = "ServicePrincipal"
-      roleDefinitionId = "/subscriptions/${var.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/73c42c96-874c-492b-b04d-ab87d138a893"
+      roleDefinitionId = "/subscriptions/${var.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/73c42c96-874c-492b-b04d-ab87d138a893" # Log Analytics Reader
     }
   }
 }
@@ -86,7 +86,7 @@ resource "azapi_resource" "ai_user_role" {
     properties = {
       principalId      = azapi_resource.project.identity[0].principal_id
       principalType    = "ServicePrincipal"
-      roleDefinitionId = "/subscriptions/${var.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/53ca6127-db72-4b80-b1b0-d745d6d5456d"
+      roleDefinitionId = "/subscriptions/${var.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/53ca6127-db72-4b80-b1b0-d745d6d5456d" # Foundry User
     }
   }
 }

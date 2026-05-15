@@ -47,7 +47,7 @@ resource "azapi_resource" "storage_role" {
     properties = {
       principalId      = var.project_principal_id
       principalType    = "ServicePrincipal"
-      roleDefinitionId = "/subscriptions/${var.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/ba92f5b4-2d11-453d-a403-e96b0029c9fe"
+      roleDefinitionId = "/subscriptions/${var.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/ba92f5b4-2d11-453d-a403-e96b0029c9fe" # Storage Blob Data Contributor
     }
   }
 }
