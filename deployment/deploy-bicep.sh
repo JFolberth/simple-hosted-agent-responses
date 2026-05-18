@@ -124,8 +124,8 @@ az role assignment create \
   --scope "${PROJECT_ID}" \
   --output none 2>/dev/null || echo "    Role already assigned."
 
-echo "    Waiting 60s for RBAC propagation..."
-sleep 60
+echo "    Waiting 120s for RBAC propagation..."
+sleep 120
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 4: Authenticate Docker to ACR
