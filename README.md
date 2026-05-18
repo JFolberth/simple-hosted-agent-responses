@@ -52,7 +52,7 @@ A standard Foundry project (used for prompt-based agents, evaluations, or model 
 
 2. **An ACR connection on the project** — tells the micro VM runtime which container registry to pull images from. The registry itself is general purpose, but registering it as a connection on the Foundry project is specific to hosted agents. No stored credentials — the project managed identity (granted AcrPull on the registry) handles authentication.
 
-3. **Foundry User on the account for the project MI** — the container running inside the hosted agent authenticates as the project managed identity. That identity must have `Microsoft.CognitiveServices/*` data actions on the AI account to call the model endpoint. Without this role the container receives a 401 `PermissionDenied` on its first model call.
+3. **Foundry User on the account for the hosted agent version identity** — the container running inside the hosted agent authenticates as the per-version `instance_identity`, not the project managed identity, when calling the model endpoint. That identity is created only after the agent version is created, so the deploy flow must grant Foundry User to `instance_identity.principal_id` after version creation. Without this role the container receives a 401 `PermissionDenied` on its first model call.
 
 See [Capability hosts](https://learn.microsoft.com/azure/foundry/agents/concepts/capability-hosts) for the full reference.
 
