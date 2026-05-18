@@ -88,11 +88,11 @@ resource existingAppInsights 'Microsoft.Insights/components@2020-02-02' existing
 // evaluations against agent traces stored in the Log Analytics workspace
 resource logAnalyticsReaderRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(appInsightsId)) {
   scope: existingAppInsights
-  name: guid(resourceGroup().id, aiFoundryProjectName, '73c42c96-874c-492b-b04d-ab87d138a893')
+  name: guid(resourceGroup().id, aiFoundryProjectName, '73c42c96-874c-492b-b04d-ab87d138a893') // Log Analytics Reader
   properties: {
     principalId: project.identity.principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '73c42c96-874c-492b-b04d-ab87d138a893')
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '73c42c96-874c-492b-b04d-ab87d138a893') // Log Analytics Reader
   }
 }
 
@@ -108,11 +108,11 @@ resource logAnalyticsReaderRoleAssignment 'Microsoft.Authorization/roleAssignmen
 //   AIServices/agents/write to perform POST /api/projects/{name}/openai/*
 resource aiUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: aiAccount
-  name: guid(resourceGroup().id, aiFoundryProjectName, '53ca6127-db72-4b80-b1b0-d745d6d5456d')
+  name: guid(resourceGroup().id, aiFoundryProjectName, '53ca6127-db72-4b80-b1b0-d745d6d5456d') // Foundry User
   properties: {
     principalId: project.identity.principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '53ca6127-db72-4b80-b1b0-d745d6d5456d')
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '53ca6127-db72-4b80-b1b0-d745d6d5456d') // Foundry User
   }
 }
 

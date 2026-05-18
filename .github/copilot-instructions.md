@@ -46,6 +46,8 @@ The **Foundry data plane** (`POST {projectEndpoint}/agents/{name}/versions?api-v
 
 Prerequisites: `az login`, Docker daemon running. Terraform also requires `terraform >= 1.9` in PATH.
 
+> **Sync rule:** `deploy-bicep.sh` and `deploy-terraform.sh` share the same post-infra flow (Steps 2–7: read outputs → assign Project Manager → Docker login → build/push image → create agent version → grant Azure AI User). Only Step 1 (infra provisioning) differs between them. Any change made to the shared steps in one script **must be reconciled in the other**.
+
 ### azd
 
 ```bash
@@ -68,11 +70,14 @@ azd deploy
 
 Prerequisites: `az login`, `azd auth login`, `azd` CLI, `azure.ai.agents` extension (`azd extension install azure.ai.agents`). The dev container installs all of these automatically. `azd auth login` is required separately from `az login` — without it azd cannot populate `AZURE_TENANT_ID` into hook and extension processes, causing the `azure.ai.agents` extension to fail with `AZURE_TENANT_ID is not set in the environment`. Setting `AZURE_TENANT_ID` explicitly via `azd env set AZURE_TENANT_ID "$(az account show --query tenantId -o tsv)"` is the reliable workaround.
 
-The `postprovision` hook (`deployment/scripts/grant-project-manager.sh`) grants **Foundry Project Manager** to the deploying principal at project scope after infrastructure is provisioned — this is equivalent to Step 3 of the deploy scripts and is required before the `azure.ai.agents` extension can call `POST .../agents/*/versions`. The `azure.ai.agents` extension then handles the per-version `instance_identity` Foundry User role assignment (equivalent to Step 7).
+The `postprovision` hook (`deployment/scripts/grant-project-manager.sh`) grants **Foundry Project Manager** (`eadc314b`) to the deploying principal at project scope after infrastructure is provisioned — this is equivalent to Step 3 of the deploy scripts and is required before the `azure.ai.agents` extension can call `POST .../agents/*/versions`. The `azure.ai.agents` extension then handles the per-version `instance_identity` Foundry User role assignment (equivalent to Step 7).
 
 ---
 
 ## Key Conventions
+
+### RBAC — always use GUIDs for role assignments
+Role display names (e.g. "Azure AI Project Manager", "Azure AI User") have been renamed in the past without changing GUIDs. All `az role assignment create` calls in deploy scripts and hooks **must use the GUID**, not the display name, to be rename-proof.
 
 ### RBAC — roles required at infrastructure time
 The project managed identity needs **this one** role provisioned by IaC:
@@ -80,6 +85,13 @@ The project managed identity needs **this one** role provisioned by IaC:
 | Role | GUID | Scope | Grants |
 |---|---|---|-|
 | AcrPull | `7f951dda` | Container Registry | Image pull at container start |
+
+### RBAC — role granted at deploy time (Step 3 — before agent version creation)
+The deploying principal needs **Foundry Project Manager** at project scope so the Foundry data plane accepts the agent version creation call.
+
+| Role | GUID | Scope | When |
+|---|---|---|---|
+| Foundry Project Manager | `eadc314b` | Foundry project | Step 3 of deploy script / `postprovision` hook |
 
 ### RBAC — role granted at deploy time (post-agent-version creation)
 Foundry Agent Service creates a **per-version `instance_identity`** (a dedicated managed identity) for each hosted agent version. The container authenticates as this identity — **not** the project MI — when calling the model endpoint. This identity is only known after the agent version is created, so it cannot be pre-provisioned by IaC.
@@ -90,7 +102,7 @@ Foundry Agent Service creates a **per-version `instance_identity`** (a dedicated
 
 The deploy scripts (`deployment/deploy-bicep.sh`, `deployment/deploy-terraform.sh`) parse `instance_identity.principal_id` from the version creation response and grant this role automatically (Step 7).
 
-Missing Azure AI User on the instance identity → container starts but every model call gets `401 PermissionDenied`.
+Missing Foundry User on the instance identity → container starts but every model call gets `401 PermissionDenied`.
 
 Note: the project MI also receives Foundry User in `foundry-project.bicep` / the Terraform `foundry_project` module. This covers the project MI but **does not cover the instance identity**.
 
@@ -170,3 +182,4 @@ The Foundry runtime injects these automatically at container start — do not se
 - Do not place an `azure.yaml` at the repo root — azd must be run from `deployment/` where it finds the generated `azure.yaml`.
 - Do not commit `deployment/azure.yaml` — it is gitignored and generated locally by `deployment/azd-select.sh`.
 - Do not modify `infra/` or `src/` to accommodate azd — the `deployment/infra-azd/` shim and `deployment/azure-*.yaml` files are the only azd-specific additions.
+- Do not change the shared post-infra steps (Steps 2–7: read outputs, RBAC, Docker, image push, agent version creation, instance identity role grant) in `deploy-bicep.sh` without making the equivalent change in `deploy-terraform.sh`, and vice versa. Only Step 1 (infrastructure provisioning) intentionally differs between the two scripts.

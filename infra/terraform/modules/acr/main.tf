@@ -33,7 +33,7 @@ resource "azapi_resource" "acr_pull_role" {
     properties = {
       principalId      = var.project_principal_id
       principalType    = "ServicePrincipal"
-      roleDefinitionId = "/subscriptions/${var.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/7f951dda-4ed3-4680-a7ca-43fe172d538d"
+      roleDefinitionId = "/subscriptions/${var.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/7f951dda-4ed3-4680-a7ca-43fe172d538d" # AcrPull
     }
   }
 }
