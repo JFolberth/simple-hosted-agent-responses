@@ -93,13 +93,6 @@ The deploying principal needs **Foundry Project Manager** at project scope so th
 |---|---|---|---|
 | Foundry Project Manager | `eadc314b` | Foundry project | Step 3 of deploy script / `postprovision` hook |
 
-### RBAC — role granted at deploy time (Step 3 — before agent version creation)
-The deploying principal needs **Foundry Project Manager** at project scope so the Foundry data plane accepts the agent version creation call.
-
-| Role | GUID | Scope | When |
-|---|---|---|---|
-| Foundry Project Manager | `eadc314b` | Foundry project | Step 3 of deploy script / `postprovision` hook |
-
 ### RBAC — role granted at deploy time (post-agent-version creation)
 Foundry Agent Service creates a **per-version `instance_identity`** (a dedicated managed identity) for each hosted agent version. The container authenticates as this identity — **not** the project MI — when calling the model endpoint. This identity is only known after the agent version is created, so it cannot be pre-provisioned by IaC.
 
