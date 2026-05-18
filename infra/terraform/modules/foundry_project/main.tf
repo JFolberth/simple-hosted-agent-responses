@@ -28,6 +28,17 @@ resource "azapi_resource" "project" {
 # Links the project to Application Insights for trace collection.
 # Not hosted-agent-specific: prompt-based agents and evaluations in the portal
 # also use it to surface traces.
+#
+# auth_type "ApiKey" with the connection string is the only option the Foundry portal
+# supports for the AppInsights connection category — "AAD" is not accepted here.
+#
+# Why not use Entra-authenticated telemetry ingestion?
+# Microsoft Entra auth for App Insights (APPLICATIONINSIGHTS_AUTHENTICATION_STRING +
+# Monitoring Metrics Publisher role) exists but Microsoft docs explicitly state it does
+# NOT support autoinstrumentation scenarios. The agent framework relies on autoinstrumentation
+# via the injected APPLICATIONINSIGHTS_CONNECTION_STRING env var, so Entra ingestion auth
+# would not take effect. The portal connection still requires the key regardless, making
+# the extra role assignment all cost with no benefit.
 
 module "app_insights_connection" {
   count  = var.enable_app_insights ? 1 : 0

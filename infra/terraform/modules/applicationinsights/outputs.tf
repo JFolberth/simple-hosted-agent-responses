@@ -14,8 +14,3 @@ output "connection_string" {
   sensitive   = true
 }
 
-output "instrumentation_key" {
-  description = "Instrumentation key for the Application Insights instance."
-  value       = azapi_resource.application_insights.output.properties.InstrumentationKey
-  sensitive   = true
-}

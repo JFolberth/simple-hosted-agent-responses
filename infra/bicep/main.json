@@ -5,8 +5,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.43.1.21952",
-      "templateHash": "7622093996274120779"
+      "version": "0.43.8.12551",
+      "templateHash": "16628685913731258154"
     }
   },
   "definitions": {
@@ -321,8 +321,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.43.1.21952",
-              "templateHash": "747573191134251130"
+              "version": "0.43.8.12551",
+              "templateHash": "2323248154211999618"
             },
             "description": "Creates a Log Analytics workspace."
           },
@@ -403,8 +403,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.43.1.21952",
-              "templateHash": "14956080011368146217"
+              "version": "0.43.8.12551",
+              "templateHash": "14866636076117411469"
             },
             "description": "Creates an Application Insights instance based on an existing Log Analytics workspace."
           },
@@ -447,10 +447,6 @@
               "type": "string",
               "value": "[resourceId('Microsoft.Insights/components', parameters('name'))]"
             },
-            "instrumentationKey": {
-              "type": "string",
-              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('name')), '2020-02-02').InstrumentationKey]"
-            },
             "name": {
               "type": "string",
               "value": "[parameters('name')]"
@@ -491,8 +487,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.43.1.21952",
-              "templateHash": "661153370516041673"
+              "version": "0.43.8.12551",
+              "templateHash": "14291500487765878181"
             }
           },
           "definitions": {
@@ -696,8 +692,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.43.1.21952",
-              "templateHash": "14763682136905542597"
+              "version": "0.43.8.12551",
+              "templateHash": "2115148337422194065"
             }
           },
           "parameters": {
@@ -761,28 +757,6 @@
             },
             {
               "condition": "[not(empty(parameters('appInsightsId')))]",
-              "type": "Microsoft.CognitiveServices/accounts/projects/connections",
-              "apiVersion": "2026-03-01",
-              "name": "[format('{0}/{1}/{2}', parameters('aiServicesAccountName'), parameters('aiFoundryProjectName'), format('appi-{0}', variables('resourceToken')))]",
-              "properties": {
-                "category": "AppInsights",
-                "target": "[parameters('appInsightsId')]",
-                "authType": "ApiKey",
-                "isSharedToAll": true,
-                "credentials": {
-                  "key": "[parameters('appInsightsConnectionString')]"
-                },
-                "metadata": {
-                  "ApiType": "Azure",
-                  "ResourceId": "[parameters('appInsightsId')]"
-                }
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('aiServicesAccountName'), parameters('aiFoundryProjectName'))]"
-              ]
-            },
-            {
-              "condition": "[not(empty(parameters('appInsightsId')))]",
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
               "scope": "[resourceId('Microsoft.Insights/components', last(split(parameters('appInsightsId'), '/')))]",
@@ -791,6 +765,292 @@
                 "principalId": "[reference(resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('aiServicesAccountName'), parameters('aiFoundryProjectName')), '2026-03-01', 'full').identity.principalId]",
                 "principalType": "ServicePrincipal",
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '73c42c96-874c-492b-b04d-ab87d138a893')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('aiServicesAccountName'), parameters('aiFoundryProjectName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.CognitiveServices/accounts', parameters('aiServicesAccountName'))]",
+              "name": "[guid(resourceGroup().id, parameters('aiFoundryProjectName'), '53ca6127-db72-4b80-b1b0-d745d6d5456d')]",
+              "properties": {
+                "principalId": "[reference(resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('aiServicesAccountName'), parameters('aiFoundryProjectName')), '2026-03-01', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal",
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '53ca6127-db72-4b80-b1b0-d745d6d5456d')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('aiServicesAccountName'), parameters('aiFoundryProjectName'))]"
+              ]
+            },
+            {
+              "condition": "[not(empty(parameters('appInsightsId')))]",
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2025-04-01",
+              "name": "appi-connection",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "aiServicesAccountName": {
+                    "value": "[parameters('aiServicesAccountName')]"
+                  },
+                  "aiProjectName": {
+                    "value": "[parameters('aiFoundryProjectName')]"
+                  },
+                  "connectionConfig": {
+                    "value": {
+                      "name": "[format('appi-{0}', variables('resourceToken'))]",
+                      "category": "AppInsights",
+                      "target": "[parameters('appInsightsId')]",
+                      "authType": "ApiKey",
+                      "isSharedToAll": true,
+                      "metadata": {
+                        "ApiType": "Azure",
+                        "ResourceId": "[parameters('appInsightsId')]"
+                      }
+                    }
+                  },
+                  "credentials": {
+                    "value": {
+                      "key": "[parameters('appInsightsConnectionString')]"
+                    }
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "languageVersion": "2.0",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.43.8.12551",
+                      "templateHash": "4988068458629517172"
+                    }
+                  },
+                  "definitions": {
+                    "ConnectionConfig": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "metadata": {
+                            "description": "Name of the connection"
+                          }
+                        },
+                        "category": {
+                          "type": "string",
+                          "metadata": {
+                            "description": "Category of the connection (e.g., ContainerRegistry, AzureStorageAccount, CognitiveSearch, AzureOpenAI)"
+                          }
+                        },
+                        "target": {
+                          "type": "string",
+                          "metadata": {
+                            "description": "Target endpoint or URL for the connection"
+                          }
+                        },
+                        "authType": {
+                          "type": "string",
+                          "allowedValues": [
+                            "AAD",
+                            "AccessKey",
+                            "AccountKey",
+                            "AgenticIdentity",
+                            "ApiKey",
+                            "CustomKeys",
+                            "ManagedIdentity",
+                            "None",
+                            "OAuth2",
+                            "PAT",
+                            "ProjectManagedIdentity",
+                            "SAS",
+                            "ServicePrincipal",
+                            "UserEntraToken",
+                            "UsernamePassword"
+                          ],
+                          "metadata": {
+                            "description": "Authentication type"
+                          }
+                        },
+                        "isSharedToAll": {
+                          "type": "bool",
+                          "nullable": true,
+                          "metadata": {
+                            "description": "Whether the connection is shared to all users (optional, defaults to true)"
+                          }
+                        },
+                        "metadata": {
+                          "type": "object",
+                          "nullable": true,
+                          "metadata": {
+                            "description": "Additional metadata for the connection (optional)"
+                          }
+                        },
+                        "error": {
+                          "type": "string",
+                          "nullable": true,
+                          "metadata": {
+                            "description": "Error message if the connection fails (optional)"
+                          }
+                        },
+                        "expiryTime": {
+                          "type": "string",
+                          "nullable": true,
+                          "metadata": {
+                            "description": "Expiry time for the connection (optional)"
+                          }
+                        },
+                        "peRequirement": {
+                          "type": "string",
+                          "allowedValues": [
+                            "NotApplicable",
+                            "NotRequired",
+                            "Required"
+                          ],
+                          "nullable": true,
+                          "metadata": {
+                            "description": "Private endpoint requirement: Required, NotRequired, or NotApplicable (optional)"
+                          }
+                        },
+                        "peStatus": {
+                          "type": "string",
+                          "allowedValues": [
+                            "Active",
+                            "Inactive",
+                            "NotApplicable"
+                          ],
+                          "nullable": true,
+                          "metadata": {
+                            "description": "Private endpoint status: Active, Inactive, or NotApplicable (optional)"
+                          }
+                        },
+                        "sharedUserList": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "nullable": true,
+                          "metadata": {
+                            "description": "List of users to share the connection with (optional, alternative to isSharedToAll)"
+                          }
+                        },
+                        "useWorkspaceManagedIdentity": {
+                          "type": "bool",
+                          "nullable": true,
+                          "metadata": {
+                            "description": "Whether to use workspace managed identity (optional)"
+                          }
+                        },
+                        "authorizationUrl": {
+                          "type": "string",
+                          "nullable": true,
+                          "metadata": {
+                            "description": "OAuth2 authorization endpoint URL (optional, OAuth2 authType only)"
+                          }
+                        },
+                        "tokenUrl": {
+                          "type": "string",
+                          "nullable": true,
+                          "metadata": {
+                            "description": "OAuth2 token endpoint URL (optional, OAuth2 authType only)"
+                          }
+                        },
+                        "refreshUrl": {
+                          "type": "string",
+                          "nullable": true,
+                          "metadata": {
+                            "description": "OAuth2 refresh token endpoint URL (optional, OAuth2 authType only)"
+                          }
+                        },
+                        "scopes": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "nullable": true,
+                          "metadata": {
+                            "description": "OAuth2 scopes to request (optional, OAuth2 authType only)"
+                          }
+                        },
+                        "audience": {
+                          "type": "string",
+                          "nullable": true,
+                          "metadata": {
+                            "description": "Token audience for UserEntraToken / AgenticIdentity auth types (optional)"
+                          }
+                        },
+                        "connectorName": {
+                          "type": "string",
+                          "nullable": true,
+                          "metadata": {
+                            "description": "Managed connector name for OAuth2 managed connectors (optional)"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "parameters": {
+                    "aiServicesAccountName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "AI Services account name"
+                      }
+                    },
+                    "aiProjectName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "AI project name"
+                      }
+                    },
+                    "connectionConfig": {
+                      "$ref": "#/definitions/ConnectionConfig",
+                      "metadata": {
+                        "description": "Connection configuration"
+                      }
+                    },
+                    "credentials": {
+                      "type": "secureObject",
+                      "defaultValue": {},
+                      "metadata": {
+                        "description": "Credentials for the connection. Kept as a separate @secure parameter to prevent secrets from appearing in deployment logs. Shape depends on authType — e.g. { key: \"...\" } for ApiKey, { clientId: \"...\", clientSecret: \"...\" } for OAuth2/ServicePrincipal."
+                      }
+                    }
+                  },
+                  "resources": {
+                    "aiAccount::project": {
+                      "existing": true,
+                      "type": "Microsoft.CognitiveServices/accounts/projects",
+                      "apiVersion": "2026-03-01",
+                      "name": "[format('{0}/{1}', parameters('aiServicesAccountName'), parameters('aiProjectName'))]"
+                    },
+                    "aiAccount": {
+                      "existing": true,
+                      "type": "Microsoft.CognitiveServices/accounts",
+                      "apiVersion": "2026-03-01",
+                      "name": "[parameters('aiServicesAccountName')]"
+                    },
+                    "connection": {
+                      "type": "Microsoft.CognitiveServices/accounts/projects/connections",
+                      "apiVersion": "2026-03-01",
+                      "name": "[format('{0}/{1}/{2}', parameters('aiServicesAccountName'), parameters('aiProjectName'), parameters('connectionConfig').name)]",
+                      "properties": "[shallowMerge(createArray(createObject('category', parameters('connectionConfig').category, 'target', parameters('connectionConfig').target, 'authType', parameters('connectionConfig').authType, 'isSharedToAll', coalesce(tryGet(parameters('connectionConfig'), 'isSharedToAll'), true()), 'credentials', if(not(empty(parameters('credentials'))), parameters('credentials'), null()), 'metadata', tryGet(parameters('connectionConfig'), 'metadata')), if(not(equals(tryGet(parameters('connectionConfig'), 'error'), null())), createObject('error', tryGet(parameters('connectionConfig'), 'error')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'expiryTime'), null())), createObject('expiryTime', tryGet(parameters('connectionConfig'), 'expiryTime')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'peRequirement'), null())), createObject('peRequirement', tryGet(parameters('connectionConfig'), 'peRequirement')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'peStatus'), null())), createObject('peStatus', tryGet(parameters('connectionConfig'), 'peStatus')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'sharedUserList'), null())), createObject('sharedUserList', tryGet(parameters('connectionConfig'), 'sharedUserList')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'useWorkspaceManagedIdentity'), null())), createObject('useWorkspaceManagedIdentity', tryGet(parameters('connectionConfig'), 'useWorkspaceManagedIdentity')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'authorizationUrl'), null())), createObject('authorizationUrl', tryGet(parameters('connectionConfig'), 'authorizationUrl')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'tokenUrl'), null())), createObject('tokenUrl', tryGet(parameters('connectionConfig'), 'tokenUrl')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'refreshUrl'), null())), createObject('refreshUrl', tryGet(parameters('connectionConfig'), 'refreshUrl')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'scopes'), null())), createObject('scopes', tryGet(parameters('connectionConfig'), 'scopes')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'audience'), null())), createObject('audience', tryGet(parameters('connectionConfig'), 'audience')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'connectorName'), null())), createObject('connectorName', tryGet(parameters('connectionConfig'), 'connectorName')), createObject())))]"
+                    }
+                  },
+                  "outputs": {
+                    "connectionName": {
+                      "type": "string",
+                      "value": "[parameters('connectionConfig').name]"
+                    },
+                    "connectionId": {
+                      "type": "string",
+                      "value": "[resourceId('Microsoft.CognitiveServices/accounts/projects/connections', parameters('aiServicesAccountName'), parameters('aiProjectName'), parameters('connectionConfig').name)]"
+                    }
+                  }
+                }
               },
               "dependsOn": [
                 "[resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('aiServicesAccountName'), parameters('aiFoundryProjectName'))]"
@@ -859,8 +1119,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.43.1.21952",
-              "templateHash": "6194011640998288688"
+              "version": "0.43.8.12551",
+              "templateHash": "10136782469721818695"
             }
           },
           "parameters": {
@@ -974,8 +1234,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.43.1.21952",
-                      "templateHash": "6268789021272089606"
+                      "version": "0.43.8.12551",
+                      "templateHash": "4988068458629517172"
                     }
                   },
                   "definitions": {
@@ -1229,433 +1489,9 @@
         "foundryProject",
         "rg"
       ]
-    },
-    "storage": {
-      "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2025-04-01",
-      "name": "storage",
-      "resourceGroup": "[parameters('resourceGroupName')]",
-      "properties": {
-        "expressionEvaluationOptions": {
-          "scope": "inner"
-        },
-        "mode": "Incremental",
-        "parameters": {
-          "location": {
-            "value": "[parameters('aiDeploymentsLocation')]"
-          },
-          "tags": {
-            "value": "[variables('tags')]"
-          },
-          "resourceName": {
-            "value": "[format('st{0}', variables('resourceToken'))]"
-          },
-          "connectionName": {
-            "value": "[format('storage-{0}', variables('resourceToken'))]"
-          },
-          "aiServicesAccountName": {
-            "value": "[reference('foundry').outputs.aiServicesAccountName.value]"
-          },
-          "aiProjectName": {
-            "value": "[reference('foundryProject').outputs.projectName.value]"
-          }
-        },
-        "template": {
-          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-          "contentVersion": "1.0.0.0",
-          "metadata": {
-            "_generator": {
-              "name": "bicep",
-              "version": "0.43.1.21952",
-              "templateHash": "6794934717682971752"
-            }
-          },
-          "parameters": {
-            "location": {
-              "type": "string",
-              "defaultValue": "[resourceGroup().location]",
-              "metadata": {
-                "description": "The location used for all deployed resources"
-              }
-            },
-            "tags": {
-              "type": "object",
-              "defaultValue": {},
-              "metadata": {
-                "description": "Tags that will be applied to all resources"
-              }
-            },
-            "resourceName": {
-              "type": "string",
-              "metadata": {
-                "description": "Storage account resource name"
-              }
-            },
-            "aiServicesAccountName": {
-              "type": "string",
-              "metadata": {
-                "description": "AI Services account name for the project parent"
-              }
-            },
-            "aiProjectName": {
-              "type": "string",
-              "metadata": {
-                "description": "AI project name for creating the connection"
-              }
-            },
-            "connectionName": {
-              "type": "string",
-              "metadata": {
-                "description": "Name for the AI Foundry storage connection"
-              }
-            }
-          },
-          "resources": [
-            {
-              "type": "Microsoft.Storage/storageAccounts",
-              "apiVersion": "2025-08-01",
-              "name": "[parameters('resourceName')]",
-              "location": "[parameters('location')]",
-              "tags": "[parameters('tags')]",
-              "sku": {
-                "name": "Standard_LRS"
-              },
-              "kind": "StorageV2",
-              "identity": {
-                "type": "SystemAssigned"
-              },
-              "properties": {
-                "supportsHttpsTrafficOnly": true,
-                "allowBlobPublicAccess": false,
-                "minimumTlsVersion": "TLS1_2",
-                "accessTier": "Hot",
-                "encryption": {
-                  "services": {
-                    "blob": {
-                      "enabled": true
-                    },
-                    "file": {
-                      "enabled": true
-                    }
-                  },
-                  "keySource": "Microsoft.Storage"
-                }
-              }
-            },
-            {
-              "type": "Microsoft.Authorization/roleAssignments",
-              "apiVersion": "2022-04-01",
-              "scope": "[resourceId('Microsoft.Storage/storageAccounts', parameters('resourceName'))]",
-              "name": "[guid(resourceGroup().id, parameters('resourceName'), parameters('aiServicesAccountName'), 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')]",
-              "properties": {
-                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')]",
-                "principalId": "[reference(resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('aiServicesAccountName'), parameters('aiProjectName')), '2026-03-01', 'full').identity.principalId]",
-                "principalType": "ServicePrincipal"
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Storage/storageAccounts', parameters('resourceName'))]"
-              ]
-            },
-            {
-              "type": "Microsoft.Resources/deployments",
-              "apiVersion": "2025-04-01",
-              "name": "storage-connection-creation",
-              "properties": {
-                "expressionEvaluationOptions": {
-                  "scope": "inner"
-                },
-                "mode": "Incremental",
-                "parameters": {
-                  "aiServicesAccountName": {
-                    "value": "[parameters('aiServicesAccountName')]"
-                  },
-                  "aiProjectName": {
-                    "value": "[parameters('aiProjectName')]"
-                  },
-                  "connectionConfig": {
-                    "value": {
-                      "name": "[parameters('connectionName')]",
-                      "category": "AzureStorageAccount",
-                      "target": "[reference(resourceId('Microsoft.Storage/storageAccounts', parameters('resourceName')), '2025-08-01').primaryEndpoints.blob]",
-                      "authType": "AAD",
-                      "isSharedToAll": true,
-                      "metadata": {
-                        "ApiType": "Azure",
-                        "ResourceId": "[resourceId('Microsoft.Storage/storageAccounts', parameters('resourceName'))]",
-                        "location": "[reference(resourceId('Microsoft.Storage/storageAccounts', parameters('resourceName')), '2025-08-01', 'full').location]"
-                      }
-                    }
-                  }
-                },
-                "template": {
-                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-                  "languageVersion": "2.0",
-                  "contentVersion": "1.0.0.0",
-                  "metadata": {
-                    "_generator": {
-                      "name": "bicep",
-                      "version": "0.43.1.21952",
-                      "templateHash": "6268789021272089606"
-                    }
-                  },
-                  "definitions": {
-                    "ConnectionConfig": {
-                      "type": "object",
-                      "properties": {
-                        "name": {
-                          "type": "string",
-                          "metadata": {
-                            "description": "Name of the connection"
-                          }
-                        },
-                        "category": {
-                          "type": "string",
-                          "metadata": {
-                            "description": "Category of the connection (e.g., ContainerRegistry, AzureStorageAccount, CognitiveSearch, AzureOpenAI)"
-                          }
-                        },
-                        "target": {
-                          "type": "string",
-                          "metadata": {
-                            "description": "Target endpoint or URL for the connection"
-                          }
-                        },
-                        "authType": {
-                          "type": "string",
-                          "allowedValues": [
-                            "AAD",
-                            "AccessKey",
-                            "AccountKey",
-                            "AgenticIdentity",
-                            "ApiKey",
-                            "CustomKeys",
-                            "ManagedIdentity",
-                            "None",
-                            "OAuth2",
-                            "PAT",
-                            "ProjectManagedIdentity",
-                            "SAS",
-                            "ServicePrincipal",
-                            "UserEntraToken",
-                            "UsernamePassword"
-                          ],
-                          "metadata": {
-                            "description": "Authentication type"
-                          }
-                        },
-                        "isSharedToAll": {
-                          "type": "bool",
-                          "nullable": true,
-                          "metadata": {
-                            "description": "Whether the connection is shared to all users (optional, defaults to true)"
-                          }
-                        },
-                        "metadata": {
-                          "type": "object",
-                          "nullable": true,
-                          "metadata": {
-                            "description": "Additional metadata for the connection (optional)"
-                          }
-                        },
-                        "error": {
-                          "type": "string",
-                          "nullable": true,
-                          "metadata": {
-                            "description": "Error message if the connection fails (optional)"
-                          }
-                        },
-                        "expiryTime": {
-                          "type": "string",
-                          "nullable": true,
-                          "metadata": {
-                            "description": "Expiry time for the connection (optional)"
-                          }
-                        },
-                        "peRequirement": {
-                          "type": "string",
-                          "allowedValues": [
-                            "NotApplicable",
-                            "NotRequired",
-                            "Required"
-                          ],
-                          "nullable": true,
-                          "metadata": {
-                            "description": "Private endpoint requirement: Required, NotRequired, or NotApplicable (optional)"
-                          }
-                        },
-                        "peStatus": {
-                          "type": "string",
-                          "allowedValues": [
-                            "Active",
-                            "Inactive",
-                            "NotApplicable"
-                          ],
-                          "nullable": true,
-                          "metadata": {
-                            "description": "Private endpoint status: Active, Inactive, or NotApplicable (optional)"
-                          }
-                        },
-                        "sharedUserList": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          },
-                          "nullable": true,
-                          "metadata": {
-                            "description": "List of users to share the connection with (optional, alternative to isSharedToAll)"
-                          }
-                        },
-                        "useWorkspaceManagedIdentity": {
-                          "type": "bool",
-                          "nullable": true,
-                          "metadata": {
-                            "description": "Whether to use workspace managed identity (optional)"
-                          }
-                        },
-                        "authorizationUrl": {
-                          "type": "string",
-                          "nullable": true,
-                          "metadata": {
-                            "description": "OAuth2 authorization endpoint URL (optional, OAuth2 authType only)"
-                          }
-                        },
-                        "tokenUrl": {
-                          "type": "string",
-                          "nullable": true,
-                          "metadata": {
-                            "description": "OAuth2 token endpoint URL (optional, OAuth2 authType only)"
-                          }
-                        },
-                        "refreshUrl": {
-                          "type": "string",
-                          "nullable": true,
-                          "metadata": {
-                            "description": "OAuth2 refresh token endpoint URL (optional, OAuth2 authType only)"
-                          }
-                        },
-                        "scopes": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          },
-                          "nullable": true,
-                          "metadata": {
-                            "description": "OAuth2 scopes to request (optional, OAuth2 authType only)"
-                          }
-                        },
-                        "audience": {
-                          "type": "string",
-                          "nullable": true,
-                          "metadata": {
-                            "description": "Token audience for UserEntraToken / AgenticIdentity auth types (optional)"
-                          }
-                        },
-                        "connectorName": {
-                          "type": "string",
-                          "nullable": true,
-                          "metadata": {
-                            "description": "Managed connector name for OAuth2 managed connectors (optional)"
-                          }
-                        }
-                      }
-                    }
-                  },
-                  "parameters": {
-                    "aiServicesAccountName": {
-                      "type": "string",
-                      "metadata": {
-                        "description": "AI Services account name"
-                      }
-                    },
-                    "aiProjectName": {
-                      "type": "string",
-                      "metadata": {
-                        "description": "AI project name"
-                      }
-                    },
-                    "connectionConfig": {
-                      "$ref": "#/definitions/ConnectionConfig",
-                      "metadata": {
-                        "description": "Connection configuration"
-                      }
-                    },
-                    "credentials": {
-                      "type": "secureObject",
-                      "defaultValue": {},
-                      "metadata": {
-                        "description": "Credentials for the connection. Kept as a separate @secure parameter to prevent secrets from appearing in deployment logs. Shape depends on authType — e.g. { key: \"...\" } for ApiKey, { clientId: \"...\", clientSecret: \"...\" } for OAuth2/ServicePrincipal."
-                      }
-                    }
-                  },
-                  "resources": {
-                    "aiAccount::project": {
-                      "existing": true,
-                      "type": "Microsoft.CognitiveServices/accounts/projects",
-                      "apiVersion": "2026-03-01",
-                      "name": "[format('{0}/{1}', parameters('aiServicesAccountName'), parameters('aiProjectName'))]"
-                    },
-                    "aiAccount": {
-                      "existing": true,
-                      "type": "Microsoft.CognitiveServices/accounts",
-                      "apiVersion": "2026-03-01",
-                      "name": "[parameters('aiServicesAccountName')]"
-                    },
-                    "connection": {
-                      "type": "Microsoft.CognitiveServices/accounts/projects/connections",
-                      "apiVersion": "2026-03-01",
-                      "name": "[format('{0}/{1}/{2}', parameters('aiServicesAccountName'), parameters('aiProjectName'), parameters('connectionConfig').name)]",
-                      "properties": "[shallowMerge(createArray(createObject('category', parameters('connectionConfig').category, 'target', parameters('connectionConfig').target, 'authType', parameters('connectionConfig').authType, 'isSharedToAll', coalesce(tryGet(parameters('connectionConfig'), 'isSharedToAll'), true()), 'credentials', if(not(empty(parameters('credentials'))), parameters('credentials'), null()), 'metadata', tryGet(parameters('connectionConfig'), 'metadata')), if(not(equals(tryGet(parameters('connectionConfig'), 'error'), null())), createObject('error', tryGet(parameters('connectionConfig'), 'error')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'expiryTime'), null())), createObject('expiryTime', tryGet(parameters('connectionConfig'), 'expiryTime')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'peRequirement'), null())), createObject('peRequirement', tryGet(parameters('connectionConfig'), 'peRequirement')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'peStatus'), null())), createObject('peStatus', tryGet(parameters('connectionConfig'), 'peStatus')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'sharedUserList'), null())), createObject('sharedUserList', tryGet(parameters('connectionConfig'), 'sharedUserList')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'useWorkspaceManagedIdentity'), null())), createObject('useWorkspaceManagedIdentity', tryGet(parameters('connectionConfig'), 'useWorkspaceManagedIdentity')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'authorizationUrl'), null())), createObject('authorizationUrl', tryGet(parameters('connectionConfig'), 'authorizationUrl')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'tokenUrl'), null())), createObject('tokenUrl', tryGet(parameters('connectionConfig'), 'tokenUrl')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'refreshUrl'), null())), createObject('refreshUrl', tryGet(parameters('connectionConfig'), 'refreshUrl')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'scopes'), null())), createObject('scopes', tryGet(parameters('connectionConfig'), 'scopes')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'audience'), null())), createObject('audience', tryGet(parameters('connectionConfig'), 'audience')), createObject()), if(not(equals(tryGet(parameters('connectionConfig'), 'connectorName'), null())), createObject('connectorName', tryGet(parameters('connectionConfig'), 'connectorName')), createObject())))]"
-                    }
-                  },
-                  "outputs": {
-                    "connectionName": {
-                      "type": "string",
-                      "value": "[parameters('connectionConfig').name]"
-                    },
-                    "connectionId": {
-                      "type": "string",
-                      "value": "[resourceId('Microsoft.CognitiveServices/accounts/projects/connections', parameters('aiServicesAccountName'), parameters('aiProjectName'), parameters('connectionConfig').name)]"
-                    }
-                  }
-                }
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Storage/storageAccounts', parameters('resourceName'))]"
-              ]
-            }
-          ],
-          "outputs": {
-            "storageAccountName": {
-              "type": "string",
-              "value": "[parameters('resourceName')]"
-            },
-            "storageAccountId": {
-              "type": "string",
-              "value": "[resourceId('Microsoft.Storage/storageAccounts', parameters('resourceName'))]"
-            },
-            "storageAccountPrincipalId": {
-              "type": "string",
-              "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', parameters('resourceName')), '2025-08-01', 'full').identity.principalId]"
-            },
-            "storageConnectionName": {
-              "type": "string",
-              "value": "[reference(resourceId('Microsoft.Resources/deployments', 'storage-connection-creation'), '2025-04-01').outputs.connectionName.value]"
-            }
-          }
-        }
-      },
-      "dependsOn": [
-        "foundry",
-        "foundryProject",
-        "rg"
-      ]
     }
   },
   "outputs": {
-    "AZURE_RESOURCE_GROUP": {
-      "type": "string",
-      "value": "[parameters('resourceGroupName')]"
-    },
     "AZURE_AI_ACCOUNT_NAME": {
       "type": "string",
       "value": "[reference('foundry').outputs.aiServicesAccountName.value]"
@@ -1663,6 +1499,10 @@
     "AZURE_AI_PROJECT_NAME": {
       "type": "string",
       "value": "[reference('foundryProject').outputs.projectName.value]"
+    },
+    "AZURE_AI_PROJECT_ID": {
+      "type": "string",
+      "value": "[reference('foundryProject').outputs.projectId.value]"
     },
     "AZURE_AI_PROJECT_ENDPOINT": {
       "type": "string",

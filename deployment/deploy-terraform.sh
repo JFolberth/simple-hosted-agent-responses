@@ -146,17 +146,19 @@ print(json.dumps(body))
 EOF
 )
 
-AGENT_VERSION_RESPONSE=$(az rest \
-  --method POST \
-  --url "${PROJECT_ENDPOINT}/agents/${AGENT_NAME}/versions?api-version=2025-11-15-preview" \
-  --resource "https://ai.azure.com/" \
-  --headers "Content-Type=application/json" \
-  --body "${AGENT_REQUEST_BODY}")
+# az rest does not reliably acquire a token scoped to https://ai.azure.com/ for
+# this endpoint. Use az account get-access-token + curl instead.
+FOUNDRY_TOKEN=$(az account get-access-token --resource "https://ai.azure.com/" --query accessToken -o tsv)
+AGENT_VERSION_RESPONSE=$(curl -s -f -X POST \
+  "${PROJECT_ENDPOINT}/agents/${AGENT_NAME}/versions?api-version=2025-11-15-preview" \
+  -H "Authorization: Bearer ${FOUNDRY_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "${AGENT_REQUEST_BODY}")
 
 AGENT_VERSION=$(echo "${AGENT_VERSION_RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Step 7: Grant Azure AI User to the agent version's instance identity
+# Step 7: Grant Foundry User to the agent version's instance identity
 #
 # Foundry Agent Service provisions a dedicated per-version managed identity
 # (instance_identity) for each hosted agent version. The container

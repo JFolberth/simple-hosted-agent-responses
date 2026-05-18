@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # grant-project-manager.sh — azd postprovision hook
 #
-# Assigns Azure AI Project Manager to the deploying principal at project scope.
+# Assigns Foundry Project Manager to the deploying principal at project scope.
 # The Foundry data plane checks this role before allowing agent version creation
 # (POST .../agents/*/versions). The azure.ai.agents azd extension calls this
 # endpoint as the logged-in user, so the role must be in place before deploy.
@@ -11,7 +11,8 @@
 
 set -euo pipefail
 
-echo "==> Granting Azure AI Project Manager at project scope..."
+ROLE_FOUNDRY_PM="eadc314b-1a2d-4efa-be10-5d325db5065e"  # Foundry Project Manager
+echo "==> Granting Foundry Project Manager (eadc314b) at project scope..."
 
 # azd injects all environment variables (including infra outputs) directly into
 # the hook process — use them as-is. :? causes an immediate, visible failure if

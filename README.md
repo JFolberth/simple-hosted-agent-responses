@@ -34,28 +34,25 @@ See the official Microsoft documentation: [What are hosted agents?](https://lear
 
 ### Infrastructure
 
-Six resources are deployed to a single resource group:
+Five resources are deployed to a single resource group:
 
 | Bicep | Terraform | Resource | Why it's here | Hosted-agent-specific? |
 |---|---|---|---|---|
 | `foundry.bicep` | `modules/foundry/` | `Microsoft.CognitiveServices/accounts` (kind: `AIServices`) | AI Services account + model deployments + **account-level capability host** | Capability host only — the account itself is used by all Foundry project types |
-| `foundry-project.bicep` | `modules/foundry_project/` | `Microsoft.CognitiveServices/accounts/projects` | Foundry project + App Insights connection + **Azure AI User** role for project MI on AI account | Project and App Insights connection are general purpose; **Azure AI User** role is hosted-agent-specific — it grants `Microsoft.CognitiveServices/*` data actions to the container's managed identity so it can call the model endpoint at runtime |
+| `foundry-project.bicep` | `modules/foundry_project/` | `Microsoft.CognitiveServices/accounts/projects` | Foundry project + App Insights connection + **Foundry User** role for project MI on AI account | Project and App Insights connection are general purpose; **Foundry User** role is hosted-agent-specific — it grants `Microsoft.CognitiveServices/*` data actions to the container's managed identity so it can call the model endpoint at runtime |
 | `acr.bicep` | `modules/acr/` | `Microsoft.ContainerRegistry/registries` | Container image registry + AcrPull role for project MI + ACR connection to the project | The registry itself is general purpose, but the **ACR connection registered on the Foundry project** is hosted-agent-specific — it tells Foundry Agent Service which registry to pull the container image from at runtime |
-| `storage.bicep` | `modules/storage/` | `Microsoft.Storage/storageAccounts` | Blob storage + Storage Blob Data Contributor for project MI + storage connection to the project | **Yes** — the account-level capability host discovers this connection to persist session thread state across the 15-minute idle timeout |
 | `loganalytics.bicep` | `modules/loganalytics/` | `Microsoft.OperationalInsights/workspaces` | Log retention backend for Application Insights | No |
 | `applicationinsights.bicep` | `modules/applicationinsights/` | `Microsoft.Insights/components` | Distributed traces, metrics, and exceptions | No — prompt-based agents and evaluations also use it |
 
 #### What makes this different from a standard Foundry project at the IaC level
 
-A standard Foundry project (used for prompt-based agents, evaluations, or model calls) needs only the AI Services account and a project resource. Hosted agents require three additional things, all declared in this template:
+A standard Foundry project (used for prompt-based agents, evaluations, or model calls) needs only the AI Services account and a project resource. Hosted agents require two additional things, all declared in this template:
 
 1. **`capabilityHosts` on the account** — registers the account with Foundry Agent Service and provisions the micro VM runtime layer. Without this, the account can serve model calls but cannot run hosted agents.
 
 2. **An ACR connection on the project** — tells the micro VM runtime which container registry to pull images from. The registry itself is general purpose, but registering it as a connection on the Foundry project is specific to hosted agents. No stored credentials — the project managed identity (granted AcrPull on the registry) handles authentication.
 
-3. **A storage connection on the project** — the account-level capability host discovers this connection automatically and uses it to persist agent session thread state (conversation history, in-flight tool calls) so sessions survive the idle timeout. The project managed identity (granted Storage Blob Data Contributor) handles authentication.
-
-4. **Azure AI User on the account for the project MI** — the container running inside the hosted agent authenticates as the project managed identity. That identity must have `Microsoft.CognitiveServices/*` data actions on the AI account to call the model endpoint. Without this role the container receives a 401 `PermissionDenied` on its first model call.
+3. **Foundry User on the account for the hosted agent version identity** — the container running inside the hosted agent authenticates as the per-version `instance_identity`, not the project managed identity, when calling the model endpoint. That identity is created only after the agent version is created, so the deploy flow must grant Foundry User to `instance_identity.principal_id` after version creation. Without this role the container receives a 401 `PermissionDenied` on its first model call.
 
 See [Capability hosts](https://learn.microsoft.com/azure/foundry/agents/concepts/capability-hosts) for the full reference.
 
