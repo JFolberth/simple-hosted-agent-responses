@@ -68,8 +68,8 @@ resource "azapi_resource" "model_deployments" {
 # ── Account-level capability host ─────────────────────────────────────────────
 # Registers the account with Foundry Agent Service so it can run hosted agents.
 # This account-level host is sufficient — no project-level capability host is
-# needed. The runtime discovers storage and ACR connections from the project's
-# registered connections automatically.
+# needed. The runtime discovers the ACR connection from the project's registered
+# connections automatically.
 
 resource "azapi_resource" "capability_host" {
   type      = "Microsoft.CognitiveServices/accounts/capabilityHosts@2025-10-01-preview"

@@ -57,9 +57,8 @@ resource aiAccount 'Microsoft.CognitiveServices/accounts@2026-03-01' = {
   //                                     (private ACR is not yet supported)
   //
   // This account-level host is sufficient — no project-level capability host
-  // resource is needed. The runtime discovers the storage and ACR connections
-  // from the connections registered on the project (storage.bicep, acr.bicep)
-  // automatically.
+  // resource is needed. The runtime discovers the ACR connection registered on
+  // the project (acr.bicep) automatically.
   resource aiFoundryAccountCapabilityHost 'capabilityHosts@2025-10-01-preview' = {
     name: 'agents'
     properties: {

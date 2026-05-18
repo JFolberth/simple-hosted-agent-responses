@@ -153,26 +153,6 @@ module acr 'modules/acr.bicep' = {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Storage Account
-// Provides durable storage for agent thread state. Grants the Foundry project
-// managed identity Storage Blob Data Contributor and registers the account as
-// a storage connection on the Foundry project. The account-level capability
-// host (foundry.bicep) resolves this connection automatically — no project-level
-// capability host resource is required.
-// ─────────────────────────────────────────────────────────────────────────────
-module storage 'modules/storage.bicep' = {
-  scope: rg
-  name: 'storage'
-  params: {
-    location: aiDeploymentsLocation
-    tags: tags
-    resourceName: 'st${resourceToken}'
-    connectionName: 'storage-${resourceToken}'
-    aiServicesAccountName: foundry.outputs.aiServicesAccountName
-    aiProjectName: foundryProject.outputs.projectName
-  }
-}
 
 // Outputs
 output AZURE_AI_ACCOUNT_NAME string = foundry.outputs.aiServicesAccountName

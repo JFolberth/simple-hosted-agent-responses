@@ -10,13 +10,11 @@ A minimal reference for deploying a Python AI agent to Azure AI Foundry Hosted A
 |---|---|
 | `src/agent-framework/responses/basic/` | Python agent built with Agent Framework + `ResponsesHostServer` |
 | `infra/bicep/modules/foundry.bicep` | AI Services account, model deployments, account-level capability host |
-| `infra/bicep/modules/foundry-project.bicep` | Foundry project, App Insights connection, Azure AI User role for project MI |
+| `infra/bicep/modules/foundry-project.bicep` | Foundry project, App Insights connection, Foundry User role for project MI |
 | `infra/bicep/modules/acr.bicep` | Container registry, AcrPull for project MI, ACR connection |
-| `infra/bicep/modules/storage.bicep` | Blob storage, Storage Blob Data Contributor for project MI, storage connection |
 | `infra/terraform/modules/foundry/` | Terraform equivalent of `foundry.bicep` — AI account + deployments + capability host |
 | `infra/terraform/modules/foundry_project/` | Terraform equivalent of `foundry-project.bicep` — project + App Insights + roles |
 | `infra/terraform/modules/acr/` | Terraform equivalent of `acr.bicep` — registry + AcrPull + ACR connection |
-| `infra/terraform/modules/storage/` | Terraform equivalent of `storage.bicep` — storage + Blob Contributor + storage connection |
 | `infra/terraform/modules/loganalytics/` | Log Analytics workspace (Terraform) |
 | `infra/terraform/modules/applicationinsights/` | Application Insights component (Terraform) |
 | `infra/terraform/modules/foundry_project_connection/` | Reusable Terraform module for Foundry project connections |
@@ -25,7 +23,7 @@ A minimal reference for deploying a Python AI agent to Azure AI Foundry Hosted A
 | `deployment/azd-select.sh` | Interactive prompt — copies `azure-bicep.yaml` or `azure-terraform.yaml` to `deployment/azure.yaml` |
 | `deployment/azure-bicep.yaml` | azd config for Bicep (`infra.provider: bicep`, points to `deployment/infra-azd/`) |
 | `deployment/azure-terraform.yaml` | azd config for Terraform (`infra.provider: terraform`, points to `infra/terraform/`) |
-| `deployment/scripts/grant-project-manager.sh` | azd `postprovision` hook — grants Azure AI Project Manager to the deploying principal at project scope (equivalent to Step 3 of the deploy scripts) |
+| `deployment/scripts/grant-project-manager.sh` | azd `postprovision` hook — grants Foundry Project Manager to the deploying principal at project scope (equivalent to Step 3 of the deploy scripts) |
 | `deployment/infra-azd/main.bicepparam` | azd-compatible Bicep parameter shim — uses `readEnvironmentVariable()` for azd env var injection |
 
 The **Foundry data plane** (`POST {projectEndpoint}/agents/{name}/versions?api-version=2025-11-15-preview`) is used to create agent versions — NOT `az cognitiveservices agent create`, which calls a broken `containers/default:start` operation.
@@ -70,32 +68,31 @@ azd deploy
 
 Prerequisites: `az login`, `azd auth login`, `azd` CLI, `azure.ai.agents` extension (`azd extension install azure.ai.agents`). The dev container installs all of these automatically. `azd auth login` is required separately from `az login` — without it azd cannot populate `AZURE_TENANT_ID` into hook and extension processes, causing the `azure.ai.agents` extension to fail with `AZURE_TENANT_ID is not set in the environment`. Setting `AZURE_TENANT_ID` explicitly via `azd env set AZURE_TENANT_ID "$(az account show --query tenantId -o tsv)"` is the reliable workaround.
 
-The `postprovision` hook (`deployment/scripts/grant-project-manager.sh`) grants **Azure AI Project Manager** to the deploying principal at project scope after infrastructure is provisioned — this is equivalent to Step 3 of the deploy scripts and is required before the `azure.ai.agents` extension can call `POST .../agents/*/versions`. The `azure.ai.agents` extension then handles the per-version `instance_identity` Azure AI User role assignment (equivalent to Step 7).
+The `postprovision` hook (`deployment/scripts/grant-project-manager.sh`) grants **Foundry Project Manager** to the deploying principal at project scope after infrastructure is provisioned — this is equivalent to Step 3 of the deploy scripts and is required before the `azure.ai.agents` extension can call `POST .../agents/*/versions`. The `azure.ai.agents` extension then handles the per-version `instance_identity` Foundry User role assignment (equivalent to Step 7).
 
 ---
 
 ## Key Conventions
 
 ### RBAC — roles required at infrastructure time
-The project managed identity needs **these two** roles provisioned by IaC:
+The project managed identity needs **this one** role provisioned by IaC:
 
 | Role | GUID | Scope | Grants |
 |---|---|---|-|
 | AcrPull | `7f951dda` | Container Registry | Image pull at container start |
-| Storage Blob Data Contributor | `ba92f5b4` | Storage Account | Session thread state persistence |
 
 ### RBAC — role granted at deploy time (post-agent-version creation)
 Foundry Agent Service creates a **per-version `instance_identity`** (a dedicated managed identity) for each hosted agent version. The container authenticates as this identity — **not** the project MI — when calling the model endpoint. This identity is only known after the agent version is created, so it cannot be pre-provisioned by IaC.
 
 | Role | GUID | Scope | When |
 |---|---|---|---|
-| Azure AI User | `53ca6127` | AI Account | Step 7 of deploy script, after `az rest POST .../versions` |
+| Foundry User | `53ca6127` | AI Account | Step 7 of deploy script, after `az rest POST .../versions` |
 
 The deploy scripts (`deployment/deploy-bicep.sh`, `deployment/deploy-terraform.sh`) parse `instance_identity.principal_id` from the version creation response and grant this role automatically (Step 7).
 
 Missing Azure AI User on the instance identity → container starts but every model call gets `401 PermissionDenied`.
 
-Note: the project MI also receives Azure AI User in `foundry-project.bicep` / the Terraform `foundry_project` module. This covers the project MI but **does not cover the instance identity**.
+Note: the project MI also receives Foundry User in `foundry-project.bicep` / the Terraform `foundry_project` module. This covers the project MI but **does not cover the instance identity**.
 
 ### Bicep scope
 `infra/bicep/main.bicep` is `targetScope = 'subscription'`; all modules are `targetScope = 'resourceGroup'`. Modules are called with `scope: rg`. Role assignment GUIDs are always deterministic: `guid(resourceGroup().id, <discriminator>, <roleGuid>)`.
@@ -108,7 +105,7 @@ Terraform uses the **`Azure/azapi`** provider (`~> 2.0`) with `hashicorp/random`
 `count` expressions in Terraform child modules must be plan-time-known. Use explicit `bool` input variables (e.g. `enable_app_insights`) rather than deriving count from resource output strings.
 
 ### No project-level capability host
-The **account-level** `capabilityHosts/agents` resource (in `foundry.bicep`) is sufficient. A project-level capability host causes `BadRequest: All connections must be provided`. Do not add one.
+The **account-level** `capabilityHosts/agents` resource (in `foundry.bicep`) is sufficient for the basic setup this repo deploys. A project-level capability host is only needed for the standard setup (BYO Azure Storage + Cosmos DB + AI Search); without all three connections it causes `BadRequest: All connections must be provided`. Do not add one.
 
 ### Docker platform
 Always build with `--platform linux/amd64`. Foundry runtime does not support arm64; building on Apple Silicon without this flag produces a platform mismatch error in the portal.
@@ -128,7 +125,7 @@ Required fields in the request body:
   }
 }
 ```
-`metadata.enableVnextExperience: "true"` is a hard server-side requirement — omitting it causes a silent failure. Auth scope: `https://ai.azure.com/` (not `cognitiveservices.azure.com`).
+`metadata.enableVnextExperience: "true"` is a hard server-side requirement — omitting it causes a silent failure. Auth scope: `https://ai.azure.com/` (not `cognitiveservices.azure.com`). Use `az account get-access-token --resource "https://ai.azure.com/"` + `curl` for the POST — `az rest --resource "https://ai.azure.com/"` does not reliably acquire the correct audience token for this endpoint.
 
 ### Responses protocol
 The agent uses `ResponsesHostServer` on port 8088. The `@app.response_handler` receives the request; conversation history is managed automatically by the platform via `previous_response_id`. There is no in-memory session store required.
@@ -146,14 +143,14 @@ The Foundry runtime injects these automatically at container start — do not se
 
 ### Bicep
 - All resource names use `resourceToken = uniqueString(subscription().id, resourceGroup().id, location)` — never hardcode names.
-- ACR connection uses `authType: ManagedIdentity`; storage connection uses `authType: AAD`. No stored keys anywhere.
+- ACR connection uses `authType: ManagedIdentity`. No stored credentials anywhere.
 - Model deployments run with `@batchSize(1)` to avoid capacity conflicts.
 - New Bicep modules belong in `infra/bicep/modules/`; always add them to `infra/bicep/main.bicep` with a section comment block.
 - The azd-compatible parameter shim is `deployment/infra-azd/main.bicepparam`. It uses `readEnvironmentVariable()` and references `infra/bicep/main.bicep` via `using '../../infra/bicep/main.bicep'`. Do not modify `infra/bicep/main.bicepparam` for azd use — that file is for the shell-script workflow.
 
 ### Terraform
 - All resource names use `resource_token = lower(random_id.resource_token.hex)` keyed on `subscription_id × resource_group_name × ai_deployments_location` — mirrors Bicep's `uniqueString`.
-- ACR connection uses `auth_type = "ManagedIdentity"`; storage connection uses `auth_type = "AAD"`. No stored keys anywhere.
+- ACR connection uses `auth_type = "ManagedIdentity"`. No stored credentials anywhere.
 - New Terraform modules belong in `infra/terraform/modules/`; always add them to `infra/terraform/main.tf` with a section comment block and add `versions.tf` declaring `Azure/azapi ~> 2.0`.
 - Role assignment resource names use `uuidv5("url", "${scope_id}/${discriminator}/${role_short_name}")` for determinism.
 - Configure `tfvars` in `infra/terraform/terraform.tfvars` (gitignored for sensitive values).

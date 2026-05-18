@@ -13,5 +13,5 @@ resource "azapi_resource" "application_insights" {
     }
   }
 
-  response_export_values = ["properties.ConnectionString", "properties.InstrumentationKey"]
+  response_export_values = ["properties.ConnectionString"]
 }

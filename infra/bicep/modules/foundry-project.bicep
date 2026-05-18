@@ -42,9 +42,20 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2026-03-01' = {
 }
 
 // App Insights connection — links the project to Application Insights for trace collection.
-// Unlike the ACR and storage connections, this is NOT hosted-agent-specific: prompt-based
-// agents and evaluations in the Foundry portal also use it to surface traces. It is
-// included here because it is scoped to the project, not the capability host.
+// Unlike the ACR connection, this is NOT hosted-agent-specific: prompt-based agents and
+// evaluations in the Foundry portal also use it to surface traces. It is included here
+// because it is scoped to the project, not the capability host.
+//
+// authType 'ApiKey' with the connection string is the only option the Foundry portal
+// supports for the AppInsights connection category — 'AAD' is not accepted here.
+//
+// Why not use Entra-authenticated telemetry ingestion?
+// Microsoft Entra auth for App Insights (APPLICATIONINSIGHTS_AUTHENTICATION_STRING +
+// Monitoring Metrics Publisher role) exists but Microsoft docs explicitly state it does
+// NOT support autoinstrumentation scenarios. The agent framework relies on autoinstrumentation
+// via the injected APPLICATIONINSIGHTS_CONNECTION_STRING env var, so Entra ingestion auth
+// would not take effect. The portal connection still requires the key regardless, making
+// the extra role assignment all cost with no benefit.
 module appInsightConnection './foundry-project-connection.bicep' = if (!empty(appInsightsId)) {
   name: 'appi-connection'
   params: {

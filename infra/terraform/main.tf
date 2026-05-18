@@ -134,25 +134,3 @@ module "acr" {
   tags                 = local.tags
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Storage Account
-# Provides durable storage for agent thread state. Grants the Foundry project
-# managed identity Storage Blob Data Contributor and registers the account as
-# a storage connection on the Foundry project. The account-level capability
-# host (foundry module) resolves this connection automatically — no project-level
-# capability host resource is required.
-# ─────────────────────────────────────────────────────────────────────────────
-
-module "storage" {
-  source = "./modules/storage"
-
-  subscription_id      = data.azapi_client_config.current.subscription_id
-  resource_group_id    = azapi_resource.resource_group.id
-  location             = var.ai_deployments_location
-  resource_name        = "st${local.resource_token}"
-  connection_name      = "storage-${local.resource_token}"
-  project_id           = module.foundry_project.project_id
-  project_principal_id = module.foundry_project.project_principal_id
-  ai_project_name      = local.ai_foundry_project_name
-  tags                 = local.tags
-}
