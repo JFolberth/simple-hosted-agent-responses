@@ -1,0 +1,164 @@
+name: Build
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_call:
+    outputs:
+      image_tag:
+        description: Image tag — short SHA on push/workflow_call, pr{number}a{run_attempt} on pull_request (e.g. pr30a2)
+        value: ${{ jobs.image.outputs.image_tag }}
+
+jobs:
+  # ── Bicep lint, validate & what-if ─────────────────────────────────────────
+  bicep:
+    name: Bicep lint, validate & what-if
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # required for OIDC token exchange
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload Bicep code artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bicep-code
+          path: infra/bicep/
+
+      - name: Install Bicep CLI
+        run: az bicep install
+
+      - name: Bicep lint
+        run: az bicep lint --file infra/bicep/main.bicep
+
+      - name: Bicep build (validate)
+        run: az bicep build --file infra/bicep/main.bicep --outfile /tmp/main-compiled.json
+
+      - name: Parse deployment location from main.bicepparam
+        run: |
+          BICEP_LOCATION=$(grep -oP "(?<=^param location = ')[^']+" infra/bicep/main.bicepparam)
+          echo "BICEP_LOCATION=${BICEP_LOCATION}" >> "$GITHUB_ENV"
+
+      # Requires repo secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+      # Configure a federated credential on the service principal scoped to this repo.
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Bicep what-if
+        run: |
+          az deployment sub what-if \
+            --location "${{ env.BICEP_LOCATION }}" \
+            --template-file infra/bicep/main.bicep \
+            --parameters infra/bicep/main.bicepparam
+
+  # ── Terraform lint & plan ───────────────────────────────────────────────────
+  terraform:
+    name: Terraform lint & plan
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # required for OIDC token exchange
+      contents: read
+
+    # ARM_ env vars allow the azapi provider to authenticate via OIDC without
+    # relying solely on the Azure CLI token set by azure/login.
+    env:
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload Terraform code artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-code
+          path: infra/terraform/
+
+      # Requires repo secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup tflint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+
+      - name: tflint init
+        working-directory: infra/terraform
+        run: tflint --init
+
+      - name: tflint
+        working-directory: infra/terraform
+        run: tflint --recursive
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ">= 1.9"
+
+      - name: Terraform init
+        working-directory: infra/terraform
+        run: terraform init
+
+      - name: Terraform plan
+        working-directory: infra/terraform
+        run: terraform plan -input=false -var-file=terraform.tfvars
+
+  # ── Build & export Docker image ─────────────────────────────────────────────
+  image:
+    name: Build & export Docker image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      image_tag: ${{ steps.set-tag.outputs.image_tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        id: set-tag
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            IMAGE_TAG="pr${{ github.event.pull_request.number }}a${{ github.run_attempt }}"
+          else
+            IMAGE_TAG=$(git rev-parse --short HEAD)
+          fi
+          docker build \
+            --platform linux/amd64 \
+            --tag agent-framework-basic-responses:${IMAGE_TAG} \
+            --file src/agent-framework/responses/basic/Dockerfile \
+            src/agent-framework/responses/basic
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> "$GITHUB_ENV"
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Export image as tarball
+        run: docker save agent-framework-basic-responses:${IMAGE_TAG} | gzip > agent-image.tar.gz
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-image
+          path: agent-image.tar.gz

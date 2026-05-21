@@ -1,0 +1,66 @@
+name: Update Foundry Agent Version
+description: Creates a new hosted agent version via the Foundry data plane REST API.
+
+inputs:
+  project_endpoint:
+    description: Foundry project endpoint URL
+    required: true
+  agent_name:
+    description: Name of the hosted agent
+    required: true
+  image:
+    description: Full container image reference (registry/name:tag)
+    required: true
+  model_deployment_name:
+    description: Name of the AI model deployment
+    required: true
+
+outputs:
+  agent_version:
+    description: Version ID returned by the Foundry data plane
+    value: ${{ steps.post.outputs.agent_version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Post agent version to Foundry data plane
+      id: post
+      shell: bash
+      env:
+        PROJECT_ENDPOINT: ${{ inputs.project_endpoint }}
+        AGENT_NAME: ${{ inputs.agent_name }}
+        IMAGE: ${{ inputs.image }}
+        MODEL_DEPLOYMENT_NAME: ${{ inputs.model_deployment_name }}
+      run: |
+        FOUNDRY_TOKEN=$(az account get-access-token \
+          --resource "https://ai.azure.com/" \
+          --query accessToken -o tsv)
+
+        AGENT_REQUEST_BODY=$(python3 -c "
+import json, os
+body = {
+  'metadata': {'enableVnextExperience': 'true'},
+  'definition': {
+    'kind': 'hosted',
+    'container_protocol_versions': [{'protocol': 'responses', 'version': '1.0.0'}],
+    'cpu': '0.25',
+    'memory': '0.5Gi',
+    'environment_variables': {
+      'AZURE_AI_MODEL_DEPLOYMENT_NAME': os.environ['MODEL_DEPLOYMENT_NAME']
+    },
+    'image': os.environ['IMAGE']
+  }
+}
+print(json.dumps(body))
+")
+
+        RESPONSE=$(curl -s -f -X POST \
+          "${PROJECT_ENDPOINT}/agents/${AGENT_NAME}/versions?api-version=2025-11-15-preview" \
+          -H "Authorization: Bearer ${FOUNDRY_TOKEN}" \
+          -H "Content-Type: application/json" \
+          -d "${AGENT_REQUEST_BODY}")
+
+        AGENT_VERSION=$(echo "${RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
+        echo "agent_version=${AGENT_VERSION}" >> "$GITHUB_OUTPUT"
+        echo "    Agent name   : ${AGENT_NAME}"
+        echo "    Agent version: ${AGENT_VERSION}"

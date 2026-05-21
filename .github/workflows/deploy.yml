@@ -1,0 +1,133 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      acr_endpoint:
+        description: ACR endpoint (e.g. myregistry.azurecr.io)
+        required: true
+      image_name:
+        description: Container image name
+        required: true
+        default: agent-framework-basic-responses
+      agent_name:
+        description: Foundry hosted agent name
+        required: true
+        default: agent-framework-agent-basic-responses
+      environment_name:
+        description: Environment name (used in resource naming)
+        required: true
+        default: simple-hosted-agent
+      location:
+        description: Azure region for the resource group
+        required: true
+        default: swedencentral
+      ai_deployments_location:
+        description: Azure region for AI model deployments
+        required: true
+        default: swedencentral
+  workflow_call:
+    inputs:
+      acr_endpoint:
+        description: ACR endpoint (e.g. myregistry.azurecr.io)
+        required: true
+        type: string
+      image_name:
+        description: Container image name
+        required: true
+        type: string
+      agent_name:
+        description: Foundry hosted agent name
+        required: true
+        type: string
+      environment_name:
+        description: Environment name (used in resource naming)
+        required: true
+        type: string
+      location:
+        description: Azure region for the resource group
+        required: true
+        type: string
+      ai_deployments_location:
+        description: Azure region for AI model deployments
+        required: true
+        type: string
+    secrets:
+      AZURE_CLIENT_ID:
+        required: true
+      AZURE_TENANT_ID:
+        required: true
+      AZURE_SUBSCRIPTION_ID:
+        required: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ── Build artifacts ─────────────────────────────────────────────────────────
+  build:
+    name: Build
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+
+  # ── Push image to ACR ───────────────────────────────────────────────────────
+  push-image:
+    name: Push image to ACR
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: agent-image
+
+      - name: Load Docker image
+        run: docker load < agent-image.tar.gz
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Authenticate to ACR
+        run: |
+          ACR_NAME="${{ inputs.acr_endpoint }%.azurecr.io}"
+          az acr login --name "${ACR_NAME}"
+
+      - name: Tag and push image
+        run: |
+          FULL_IMAGE="${{ inputs.acr_endpoint }}/${{ inputs.image_name }}:${{ needs.build.outputs.image_tag }}"
+          docker tag "${{ inputs.image_name }}:${{ needs.build.outputs.image_tag }}" "${FULL_IMAGE}"
+          docker push "${FULL_IMAGE}"
+
+  # ── Deploy Bicep IaC + update agent ────────────────────────────────────────
+  deploy-bicep:
+    name: Deploy (Bicep)
+    needs: [build, push-image]
+    uses: ./.github/workflows/deploy-bicep.yml
+    with:
+      image: "${{ inputs.acr_endpoint }}/${{ inputs.image_name }}:${{ needs.build.outputs.image_tag }}"
+      agent_name: ${{ inputs.agent_name }}
+      environment_name: ${{ inputs.environment_name }}
+      location: ${{ inputs.location }}
+      ai_deployments_location: ${{ inputs.ai_deployments_location }}
+    secrets: inherit
+
+  # ── Deploy Terraform IaC + update agent ────────────────────────────────────
+  deploy-terraform:
+    name: Deploy (Terraform)
+    needs: [build, push-image]
+    uses: ./.github/workflows/deploy-terraform.yml
+    with:
+      image: "${{ inputs.acr_endpoint }}/${{ inputs.image_name }}:${{ needs.build.outputs.image_tag }}"
+      agent_name: ${{ inputs.agent_name }}
+      environment_name: ${{ inputs.environment_name }}
+      location: ${{ inputs.location }}
+      ai_deployments_location: ${{ inputs.ai_deployments_location }}
+    secrets: inherit

@@ -103,7 +103,6 @@ module "foundry_project" {
   source = "./modules/foundry_project"
 
   subscription_id                = data.azapi_client_config.current.subscription_id
-  resource_group_id              = azapi_resource.resource_group.id
   location                       = var.ai_deployments_location
   resource_token                 = local.resource_token
   ai_foundry_project_name        = local.ai_foundry_project_name
