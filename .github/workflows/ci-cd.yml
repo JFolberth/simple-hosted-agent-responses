@@ -32,9 +32,6 @@ on:
         description: Azure region for AI model deployments — overrides vars.AZURE_AI_DEPLOYMENTS_LOCATION
         required: false
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   # ── Build (lint + validate + image) ────────────────────────────────────────
   build:

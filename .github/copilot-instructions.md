@@ -151,6 +151,20 @@ The Foundry runtime injects these automatically at container start — do not se
 - Role assignment resource names use `uuidv5("url", "${scope_id}/${discriminator}/${role_short_name}")` for determinism.
 - Configure `tfvars` in `infra/terraform/terraform.tfvars` (gitignored for sensitive values).
 
+### GitHub Actions — pinned versions
+Always use these exact major versions in workflow files. Do not downgrade.
+
+| Action | Version | Notes |
+|---|---|---|
+| `actions/checkout` | `v6` | |
+| `actions/upload-artifact` | `v7` | |
+| `actions/download-artifact` | `v8` | |
+| `azure/login` | `v3` | Natively targets Node 24; `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` not needed |
+| `hashicorp/setup-terraform` | `v4` | |
+| `terraform-linters/setup-tflint` | `v6` | |
+
+Do not add `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` — all actions above already target Node 24 natively.
+
 ---
 
 ## What NOT to do
