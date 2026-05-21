@@ -97,8 +97,8 @@ jobs:
 
       - name: Authenticate to ACR
         run: |
-          ACR_NAME="${{ inputs.acr_endpoint }%.azurecr.io}"
-          az acr login --name "${ACR_NAME}"
+          ACR_ENDPOINT="${{ inputs.acr_endpoint }}"
+          az acr login --name "${ACR_ENDPOINT%.azurecr.io}"
 
       - name: Tag and push image
         run: |
