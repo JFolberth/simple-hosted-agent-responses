@@ -46,29 +46,6 @@ resource aiAccount 'Microsoft.CognitiveServices/accounts@2026-03-01' = {
     }
   ]
 
-  // ── Hosted-agent-specific ──────────────────────────────────────────────────
-  // Account-level capability host — this is what makes the AI Services account
-  // capable of running hosted agents. Without it the account can serve model
-  // calls but the Foundry Agent Service micro VM runtime is never provisioned.
-  //
-  // capabilityHostKind: 'Agents'      → registers with Foundry Agent Service
-  // enablePublicHostingEnvironment    → allows the micro VMs to reach the
-  //                                     public ACR endpoint for image pulls
-  //                                     (private ACR is not yet supported)
-  //
-  // This account-level host is sufficient — no project-level capability host
-  // resource is needed. The runtime discovers the ACR connection registered on
-  // the project (acr.bicep) automatically.
-  resource aiFoundryAccountCapabilityHost 'capabilityHosts@2025-10-01-preview' = {
-    name: 'agents'
-    properties: {
-      capabilityHostKind: 'Agents'
-      enablePublicHostingEnvironment: true
-    }
-    dependsOn: [
-      seqDeployments
-    ]
-  }
 }
 
 output accountId string = aiAccount.id
