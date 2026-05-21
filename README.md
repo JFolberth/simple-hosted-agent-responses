@@ -38,7 +38,7 @@ Five resources are deployed to a single resource group:
 
 | Bicep | Terraform | Resource | Why it's here | Hosted-agent-specific? |
 |---|---|---|---|---|
-| `foundry.bicep` | `modules/foundry/` | `Microsoft.CognitiveServices/accounts` (kind: `AIServices`) | AI Services account + model deployments + **account-level capability host** | Capability host only — the account itself is used by all Foundry project types |
+| `foundry.bicep` | `modules/foundry/` | `Microsoft.CognitiveServices/accounts` (kind: `AIServices`) | AI Services account + model deployments | No |
 | `foundry-project.bicep` | `modules/foundry_project/` | `Microsoft.CognitiveServices/accounts/projects` | Foundry project + App Insights connection + **Foundry User** role for project MI on AI account | Project and App Insights connection are general purpose; **Foundry User** role is hosted-agent-specific — it grants `Microsoft.CognitiveServices/*` data actions to the container's managed identity so it can call the model endpoint at runtime |
 | `acr.bicep` | `modules/acr/` | `Microsoft.ContainerRegistry/registries` | Container image registry + AcrPull role for project MI + ACR connection to the project | The registry itself is general purpose, but the **ACR connection registered on the Foundry project** is hosted-agent-specific — it tells Foundry Agent Service which registry to pull the container image from at runtime |
 | `loganalytics.bicep` | `modules/loganalytics/` | `Microsoft.OperationalInsights/workspaces` | Log retention backend for Application Insights | No |
@@ -46,13 +46,9 @@ Five resources are deployed to a single resource group:
 
 #### What makes this different from a standard Foundry project at the IaC level
 
-A standard Foundry project (used for prompt-based agents, evaluations, or model calls) needs only the AI Services account and a project resource. Hosted agents require two additional things, all declared in this template:
+A standard Foundry project (used for prompt-based agents, evaluations, or model calls) needs only the AI Services account and a project resource. Hosted agents require one additional thing declared in this template:
 
-1. **`capabilityHosts` on the account** — registers the account with Foundry Agent Service and provisions the micro VM runtime layer. Without this, the account can serve model calls but cannot run hosted agents.
-
-2. **An ACR connection on the project** — tells the micro VM runtime which container registry to pull images from. The registry itself is general purpose, but registering it as a connection on the Foundry project is specific to hosted agents. No stored credentials — the project managed identity (granted AcrPull on the registry) handles authentication.
-
-See [Capability hosts](https://learn.microsoft.com/azure/foundry/agents/concepts/capability-hosts) for the full reference.
+1. **An ACR connection on the project** — tells the micro VM runtime which container registry to pull images from. The registry itself is general purpose, but registering it as a connection on the Foundry project is specific to hosted agents. No stored credentials — the project managed identity (granted AcrPull on the registry) handles authentication.
 
 ---
 
@@ -392,7 +388,6 @@ az deployment sub delete --name deploy-simple-hosted-agent
 ## Further Reading
 
 - [What are hosted agents?](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents) — platform concepts, session model, and protocol comparison
-- [Capability hosts](https://learn.microsoft.com/azure/foundry/agents/concepts/capability-hosts) — how the account-level capability host enables the agent runtime
 - [Deploy a hosted agent](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent) — full deployment lifecycle reference
 - [Agent Framework — Foundry Hosted Agents (Python)](https://learn.microsoft.com/agent-framework/hosting/foundry-hosted-agent) — Agent Framework hosting integration
 - [Azure AI Foundry documentation](https://learn.microsoft.com/azure/foundry/) — broader platform documentation

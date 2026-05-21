@@ -9,10 +9,10 @@ A minimal reference for deploying a Python AI agent to Azure AI Foundry Hosted A
 | Layer | What it is |
 |---|---|
 | `src/agent-framework/responses/basic/` | Python agent built with Agent Framework + `ResponsesHostServer` |
-| `infra/bicep/modules/foundry.bicep` | AI Services account, model deployments, account-level capability host |
+| `infra/bicep/modules/foundry.bicep` | AI Services account, model deployments |
 | `infra/bicep/modules/foundry-project.bicep` | Foundry project, App Insights connection, Foundry User role for project MI |
 | `infra/bicep/modules/acr.bicep` | Container registry, AcrPull for project MI, ACR connection |
-| `infra/terraform/modules/foundry/` | Terraform equivalent of `foundry.bicep` — AI account + deployments + capability host |
+| `infra/terraform/modules/foundry/` | Terraform equivalent of `foundry.bicep` — AI account + deployments |
 | `infra/terraform/modules/foundry_project/` | Terraform equivalent of `foundry-project.bicep` — project + App Insights + roles |
 | `infra/terraform/modules/acr/` | Terraform equivalent of `acr.bicep` — registry + AcrPull + ACR connection |
 | `infra/terraform/modules/loganalytics/` | Log Analytics workspace (Terraform) |
@@ -103,9 +103,6 @@ Terraform uses the **`Azure/azapi`** provider (`~> 2.0`) with `hashicorp/random`
 
 `count` expressions in Terraform child modules must be plan-time-known. Use explicit `bool` input variables (e.g. `enable_app_insights`) rather than deriving count from resource output strings.
 
-### No project-level capability host
-The **account-level** `capabilityHosts/agents` resource (in `foundry.bicep`) is sufficient for the basic setup this repo deploys. A project-level capability host is only needed for the standard setup (BYO Azure Storage + Cosmos DB + AI Search); without all three connections it causes `BadRequest: All connections must be provided`. Do not add one.
-
 ### Docker platform
 Always build with `--platform linux/amd64`. Foundry runtime does not support arm64; building on Apple Silicon without this flag produces a platform mismatch error in the portal.
 
@@ -158,7 +155,6 @@ The Foundry runtime injects these automatically at container start — do not se
 
 ## What NOT to do
 
-- Do not add a project-level `capabilityHosts` resource in either Bicep or Terraform — the account-level one is sufficient and a project-level one causes `BadRequest: All connections must be provided`.
 - Do not use `az cognitiveservices agent create` — it calls a broken start operation for hosted agents.
 - Do not build Docker images without `--platform linux/amd64` on Apple Silicon.
 - Do not omit `metadata.enableVnextExperience: "true"` in agent version payloads.

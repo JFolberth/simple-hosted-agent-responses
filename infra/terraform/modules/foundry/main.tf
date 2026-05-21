@@ -70,21 +70,24 @@ resource "azapi_resource" "model_deployments" {
 # This account-level host is sufficient — no project-level capability host is
 # needed. The runtime discovers the ACR connection from the project's registered
 # connections automatically.
-
-resource "azapi_resource" "capability_host" {
-  type      = "Microsoft.CognitiveServices/accounts/capabilityHosts@2025-10-01-preview"
-  name      = "agents"
-  parent_id = azapi_resource.ai_account.id
-
-  # Schema validation disabled — preview API schema may not be bundled.
-  schema_validation_enabled = false
-
-  body = {
-    properties = {
-      capabilityHostKind             = "Agents"
-      enablePublicHostingEnvironment = true
-    }
-  }
-
-  depends_on = [azapi_resource.model_deployments]
-}
+#
+# Commented out — may not be required. Re-enable if the Foundry data plane
+# rejects agent version creation with a capability host error.
+#
+# resource "azapi_resource" "capability_host" {
+#   type      = "Microsoft.CognitiveServices/accounts/capabilityHosts@2025-10-01-preview"
+#   name      = "agents"
+#   parent_id = azapi_resource.ai_account.id
+#
+#   # Schema validation disabled — preview API schema may not be bundled.
+#   schema_validation_enabled = false
+#
+#   body = {
+#     properties = {
+#       capabilityHostKind             = "Agents"
+#       enablePublicHostingEnvironment = true
+#     }
+#   }
+#
+#   depends_on = [azapi_resource.model_deployments]
+# }
