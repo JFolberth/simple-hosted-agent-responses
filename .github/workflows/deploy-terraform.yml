@@ -1,0 +1,125 @@
+name: Deploy (Terraform)
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Full container image reference (acr/image_name:image_tag)
+        required: true
+        type: string
+      agent_name:
+        description: Foundry hosted agent name
+        required: true
+        type: string
+      environment_name:
+        description: Environment name — used in resource naming and Terraform vars
+        required: true
+        type: string
+      location:
+        description: Azure region for the resource group
+        required: true
+        type: string
+      ai_deployments_location:
+        description: Azure region for AI model deployments
+        required: true
+        type: string
+    secrets:
+      AZURE_CLIENT_ID:
+        required: true
+      AZURE_TENANT_ID:
+        required: true
+      AZURE_SUBSCRIPTION_ID:
+        required: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ── Deploy Terraform infrastructure ────────────────────────────────────────
+  deploy-iac:
+    name: Deploy Terraform infrastructure
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    # ARM_ env vars allow the azapi provider to authenticate via OIDC.
+    env:
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC: "true"
+    outputs:
+      project_endpoint: ${{ steps.read-outputs.outputs.project_endpoint }}
+      model_deployment_name: ${{ steps.read-outputs.outputs.model_deployment_name }}
+
+    steps:
+      - name: Download Terraform code artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-code
+          path: infra/terraform/
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ">= 1.9"
+          # Disable wrapper so terraform output is parseable
+          terraform_wrapper: false
+
+      - name: Terraform init
+        working-directory: infra/terraform
+        run: terraform init
+
+      - name: Terraform apply
+        working-directory: infra/terraform
+        # -var flags override matching values in terraform.tfvars
+        run: |
+          terraform apply -auto-approve -input=false \
+            -var="environment_name=${{ inputs.environment_name }}" \
+            -var="location=${{ inputs.location }}" \
+            -var="ai_deployments_location=${{ inputs.ai_deployments_location }}" \
+            -var-file=terraform.tfvars
+
+      - name: Read Terraform outputs
+        id: read-outputs
+        working-directory: infra/terraform
+        run: |
+          OUTPUTS=$(terraform output -json)
+          _get() { echo "$OUTPUTS" | python3 -c "import sys,json; print(json.load(sys.stdin)['$1']['value'])"; }
+          echo "project_endpoint=$(_get AZURE_AI_PROJECT_ENDPOINT)" >> "$GITHUB_OUTPUT"
+          echo "model_deployment_name=$(_get AZURE_AI_MODEL_DEPLOYMENT_NAME)" >> "$GITHUB_OUTPUT"
+
+  # ── Update hosted agent version ─────────────────────────────────────────────
+  update-agent:
+    name: Update agent version
+    needs: deploy-iac
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Update agent
+        uses: ./.github/actions/update-agent
+        with:
+          project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
+          agent_name: ${{ inputs.agent_name }}
+          image: ${{ inputs.image }}
+          model_deployment_name: ${{ needs.deploy-iac.outputs.model_deployment_name }}

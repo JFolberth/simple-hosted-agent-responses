@@ -1,0 +1,115 @@
+name: Deploy (Bicep)
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Full container image reference (acr/image_name:image_tag)
+        required: true
+        type: string
+      agent_name:
+        description: Foundry hosted agent name
+        required: true
+        type: string
+      environment_name:
+        description: Environment name — used in resource naming and Bicep params
+        required: true
+        type: string
+      location:
+        description: Azure region for the resource group
+        required: true
+        type: string
+      ai_deployments_location:
+        description: Azure region for AI model deployments
+        required: true
+        type: string
+    secrets:
+      AZURE_CLIENT_ID:
+        required: true
+      AZURE_TENANT_ID:
+        required: true
+      AZURE_SUBSCRIPTION_ID:
+        required: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ── Deploy Bicep infrastructure ─────────────────────────────────────────────
+  deploy-iac:
+    name: Deploy Bicep infrastructure
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      project_endpoint: ${{ steps.read-outputs.outputs.project_endpoint }}
+      model_deployment_name: ${{ steps.read-outputs.outputs.model_deployment_name }}
+
+    steps:
+      - name: Download Bicep code artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bicep-code
+          path: infra/bicep/
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Bicep CLI
+        run: az bicep install
+
+      - name: Deploy Bicep infrastructure
+        run: |
+          az deployment sub create \
+            --name          "deploy-${{ inputs.environment_name }}" \
+            --location      "${{ inputs.location }}" \
+            --template-file infra/bicep/main.bicep \
+            --parameters    infra/bicep/main.bicepparam \
+            --parameters    environmentName="${{ inputs.environment_name }}" \
+                            location="${{ inputs.location }}" \
+                            aiDeploymentsLocation="${{ inputs.ai_deployments_location }}" \
+            --output none
+
+      - name: Read deployment outputs
+        id: read-outputs
+        run: |
+          OUTPUTS=$(az deployment sub show \
+            --name "deploy-${{ inputs.environment_name }}" \
+            --query properties.outputs \
+            --output json)
+          _get() { echo "$OUTPUTS" | python3 -c "import sys,json; d={k.upper():v for k,v in json.load(sys.stdin).items()}; print(d['$1']['value'])"; }
+          echo "project_endpoint=$(_get AZURE_AI_PROJECT_ENDPOINT)" >> "$GITHUB_OUTPUT"
+          echo "model_deployment_name=$(_get AZURE_AI_MODEL_DEPLOYMENT_NAME)" >> "$GITHUB_OUTPUT"
+
+  # ── Update hosted agent version ─────────────────────────────────────────────
+  update-agent:
+    name: Update agent version
+    needs: deploy-iac
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Update agent
+        uses: ./.github/actions/update-agent
+        with:
+          project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
+          agent_name: ${{ inputs.agent_name }}
+          image: ${{ inputs.image }}
+          model_deployment_name: ${{ needs.deploy-iac.outputs.model_deployment_name }}

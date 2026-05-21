@@ -10,6 +10,11 @@ on:
   pull_request:
     branches:
       - main
+  workflow_call:
+    outputs:
+      image_tag:
+        description: Image tag — short SHA on push/workflow_call, pr{number}a{run_attempt} on pull_request (e.g. pr30a2)
+        value: ${{ jobs.image.outputs.image_tag }}
 
 jobs:
   # ── Bicep lint, validate & what-if ─────────────────────────────────────────
@@ -126,20 +131,28 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      image_tag: ${{ steps.set-tag.outputs.image_tag }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Build Docker image
+        id: set-tag
         run: |
-          IMAGE_TAG=$(git rev-parse --short HEAD)
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            IMAGE_TAG="pr${{ github.event.pull_request.number }}a${{ github.run_attempt }}"
+          else
+            IMAGE_TAG=$(git rev-parse --short HEAD)
+          fi
           docker build \
             --platform linux/amd64 \
             --tag agent-framework-basic-responses:${IMAGE_TAG} \
             --file src/agent-framework/responses/basic/Dockerfile \
             src/agent-framework/responses/basic
           echo "IMAGE_TAG=${IMAGE_TAG}" >> "$GITHUB_ENV"
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Export image as tarball
         run: docker save agent-framework-basic-responses:${IMAGE_TAG} | gzip > agent-image.tar.gz
