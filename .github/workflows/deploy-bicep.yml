@@ -68,20 +68,17 @@ jobs:
       - name: Deploy Bicep infrastructure
         run: |
           az deployment sub create \
-            --name          "deploy-${{ inputs.environment_name }}" \
-            --location      "${{ inputs.location }}" \
+            --name          "deploy-${{ inputs.environment_name || 'main' }}" \
+            --location      "${{ inputs.location || 'swedencentral' }}" \
             --template-file infra/bicep/main.bicep \
             --parameters    infra/bicep/main.bicepparam \
-            --parameters    environmentName="${{ inputs.environment_name }}" \
-                            location="${{ inputs.location }}" \
-                            aiDeploymentsLocation="${{ inputs.ai_deployments_location }}" \
             --output none
 
       - name: Read deployment outputs
         id: read-outputs
         run: |
           OUTPUTS=$(az deployment sub show \
-            --name "deploy-${{ inputs.environment_name }}" \
+            --name "deploy-${{ inputs.environment_name || 'main' }}" \
             --query properties.outputs \
             --output json)
           _get() { echo "$OUTPUTS" | python3 -c "import sys,json; d={k.upper():v for k,v in json.load(sys.stdin).items()}; print(d['$1']['value'])"; }
