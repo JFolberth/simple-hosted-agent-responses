@@ -1,0 +1,42 @@
+name: Push Image to ACR
+description: Authenticates to ACR and pushes a pre-built image tarball. Assumes Azure CLI is already authenticated in the calling job.
+
+inputs:
+  acr_endpoint:
+    description: Full ACR login server (e.g. myregistry.azurecr.io)
+    required: true
+  image_name:
+    description: Image name (without registry prefix or tag)
+    required: true
+  image_tag:
+    description: Image tag
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Download image artifact
+      uses: actions/download-artifact@v8
+      with:
+        name: agent-image
+
+    - name: Load Docker image
+      shell: bash
+      run: docker load < agent-image.tar.gz
+
+    - name: Authenticate to ACR
+      shell: bash
+      env:
+        ACR_ENDPOINT: ${{ inputs.acr_endpoint }}
+      run: az acr login --name "${ACR_ENDPOINT%.azurecr.io}"
+
+    - name: Tag and push image
+      shell: bash
+      env:
+        ACR_ENDPOINT: ${{ inputs.acr_endpoint }}
+        IMAGE_NAME: ${{ inputs.image_name }}
+        IMAGE_TAG: ${{ inputs.image_tag }}
+      run: |
+        FULL_IMAGE="${ACR_ENDPOINT}/${IMAGE_NAME}:${IMAGE_TAG}"
+        docker tag "${IMAGE_NAME}:${IMAGE_TAG}" "${FULL_IMAGE}"
+        docker push "${FULL_IMAGE}"
