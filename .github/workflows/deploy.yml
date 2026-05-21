@@ -7,10 +7,6 @@ on:
         description: Image tag produced by the build job
         required: true
         type: string
-      acr_endpoint:
-        description: ACR endpoint (e.g. myregistry.azurecr.io)
-        required: true
-        type: string
       image_name:
         description: Container image name
         required: true
@@ -40,61 +36,26 @@ on:
         required: true
 
 jobs:
-  # ── Push image to ACR ───────────────────────────────────────────────────────
-  push-image:
-    name: Push image to ACR
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-
-    steps:
-      - name: Download image artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: agent-image
-
-      - name: Load Docker image
-        run: docker load < agent-image.tar.gz
-
-      - name: Azure login
-        uses: azure/login@v3
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Authenticate to ACR
-        run: |
-          ACR_ENDPOINT="${{ inputs.acr_endpoint }}"
-          az acr login --name "${ACR_ENDPOINT%.azurecr.io}"
-
-      - name: Tag and push image
-        run: |
-          FULL_IMAGE="${{ inputs.acr_endpoint }}/${{ inputs.image_name }}:${{ inputs.image_tag }}"
-          docker tag "${{ inputs.image_name }}:${{ inputs.image_tag }}" "${FULL_IMAGE}"
-          docker push "${FULL_IMAGE}"
-
-  # ── Deploy Bicep IaC + update agent ────────────────────────────────────────
+  # ── Deploy Bicep IaC + push image + update agent ───────────────────────────
   deploy-bicep:
     name: Deploy (Bicep)
-    needs: push-image
     uses: ./.github/workflows/deploy-bicep.yml
     with:
-      image: "${{ inputs.acr_endpoint }}/${{ inputs.image_name }}:${{ inputs.image_tag }}"
+      image_name: ${{ inputs.image_name }}
+      image_tag: ${{ inputs.image_tag }}
       agent_name: ${{ inputs.agent_name }}
       environment_name: ${{ inputs.environment_name }}
       location: ${{ inputs.location }}
       ai_deployments_location: ${{ inputs.ai_deployments_location }}
     secrets: inherit
 
-  # ── Deploy Terraform IaC + update agent ────────────────────────────────────
+  # ── Deploy Terraform IaC + push image + update agent ──────────────────────
   deploy-terraform:
     name: Deploy (Terraform)
-    needs: push-image
     uses: ./.github/workflows/deploy-terraform.yml
     with:
-      image: "${{ inputs.acr_endpoint }}/${{ inputs.image_name }}:${{ inputs.image_tag }}"
+      image_name: ${{ inputs.image_name }}
+      image_tag: ${{ inputs.image_tag }}
       agent_name: ${{ inputs.agent_name }}
       environment_name: ${{ inputs.environment_name }}
       location: ${{ inputs.location }}
