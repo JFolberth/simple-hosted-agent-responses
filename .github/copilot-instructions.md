@@ -165,9 +165,24 @@ Always use these exact major versions in workflow files. Do not downgrade.
 
 Do not add `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` — all actions above already target Node 24 natively.
 
----
+### GitHub Actions — DRY pattern
+Apply the **Don't Repeat Yourself** principle to GitHub Actions. When the same logic appears in more than one workflow or job, extract it:
 
-## What NOT to do
+| Duplicated unit | Solution | Location |
+|---|---|---|
+| Steps (within or across jobs) | Composite action | `.github/actions/<name>/action.yml` |
+| A whole job or multi-job sequence | Reusable workflow (`workflow_call`) | `.github/workflows/<name>.yml` |
+
+**Composite action conventions:**
+- Create a dedicated folder: `.github/actions/<name>/action.yml`.
+- Pass all inputs via `env:` vars inside `run:` steps — never interpolate `${{ inputs.* }}` directly into shell strings (injection risk).
+- The calling job handles Azure CLI authentication (`azure/login@v3`) before invoking the action; the action assumes an authenticated session. This keeps actions auth-strategy-agnostic.
+- Existing composite actions in this repo: `update-agent` (Foundry data plane POST), `push-image` (ACR image push).
+
+**Reusable workflow conventions:**
+- Declare `on: workflow_call:` only (no `push:` / `pull_request:` triggers) for workflows that are always called from another workflow.
+- Pass secrets explicitly or via `secrets: inherit` from the calling workflow.
+- Existing reusable workflows: `build.yml`, `deploy.yml`, `deploy-bicep.yml`, `deploy-terraform.yml`.
 
 - Do not use `az cognitiveservices agent create` — it calls a broken start operation for hosted agents.
 - Do not build Docker images without `--platform linux/amd64` on Apple Silicon.
@@ -180,3 +195,4 @@ Do not add `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` — all actions above alre
 - Do not commit `deployment/azure.yaml` — it is gitignored and generated locally by `deployment/azd-select.sh`.
 - Do not modify `infra/` or `src/` to accommodate azd — the `deployment/infra-azd/` shim and `deployment/azure-*.yaml` files are the only azd-specific additions.
 - Do not change the shared post-infra steps (Steps 2–6: read outputs, RBAC, Docker login, build/push image, create agent version) in `deploy-bicep.sh` without making the equivalent change in `deploy-terraform.sh`, and vice versa. Only Step 1 (infrastructure provisioning) intentionally differs between the two scripts.
+- Do not duplicate steps across workflows — extract shared steps to a composite action in `.github/actions/`. See the DRY pattern section above.
