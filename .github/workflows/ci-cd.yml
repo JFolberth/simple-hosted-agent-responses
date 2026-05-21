@@ -37,6 +37,9 @@ jobs:
   build:
     name: Build
     uses: ./.github/workflows/build.yml
+    permissions:
+      id-token: write
+      contents: read
     secrets: inherit
 
   # ── Deploy (push image + IaC + agent) ──────────────────────────────────────
@@ -44,6 +47,9 @@ jobs:
     name: Deploy
     needs: build
     uses: ./.github/workflows/deploy.yml
+    permissions:
+      id-token: write
+      contents: read
     with:
       image_tag: ${{ needs.build.outputs.image_tag }}
       acr_endpoint: ${{ inputs.acr_endpoint || vars.AZURE_CONTAINER_REGISTRY_ENDPOINT }}
