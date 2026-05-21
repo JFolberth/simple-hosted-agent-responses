@@ -205,7 +205,7 @@ State is stored locally in `infra/terraform/terraform.tfstate`. This is suitable
 
 1. `azd provision` runs Bicep/Terraform and creates all Azure resources.
 2. A `postprovision` hook (`deployment/scripts/grant-project-manager.sh`) runs automatically — it grants **Azure AI Project Manager** to the deploying principal at the Foundry project scope. This step is required because the Foundry data plane evaluates `Microsoft.CognitiveServices/accounts/AIServices/agents/write` at project scope specifically, and subscription/resource group scoped assignments are not reliably inherited. Without this grant, the next step gets a `401 PermissionDenied`.
-3. The `azure.ai.agents` azd extension calls the Foundry data plane (`POST .../agents/{name}/versions`) to register the container as a hosted agent version, then grants **Azure AI User** to the per-version `instance_identity` managed identity on the AI account (so the container can call the model endpoint).
+3. The `azure.ai.agents` azd extension calls the Foundry data plane (`POST .../agents/{name}/versions`) to register the container as a hosted agent version.
 
 **Prerequisites:** `azd` CLI installed + `azure.ai.agents` extension (both installed automatically in the dev container).
 
@@ -284,9 +284,6 @@ Builds the Docker image from `src/agent-framework/responses/basic/` and tags it 
 **Step 6 — Deploy the hosted agent**
 POSTs to the Foundry data plane (`{projectEndpoint}/agents/{name}/versions?api-version=2025-11-15-preview`) via `az rest` with `--resource https://ai.azure.com/`. The request body specifies `kind: hosted`, the container image tag, CPU/memory, protocol (`responses 1.0.0`), and the `AZURE_AI_MODEL_DEPLOYMENT_NAME` environment variable. The platform pulls the image, provisions a micro VM, and creates a dedicated Entra identity and endpoint for the agent. The Foundry runtime also injects `FOUNDRY_PROJECT_ENDPOINT` and `APPLICATIONINSIGHTS_CONNECTION_STRING` automatically. The management-plane CLI (`az cognitiveservices agent create`) is **not** used — it calls a separate start operation that returns 404 for hosted agents.
 
-**Step 7 — Grant Azure AI User to the agent version's instance identity**
-Foundry Agent Service provisions a dedicated per-version managed identity (`instance_identity`) for each hosted agent version. The container authenticates as this identity — not the project MI — when making model calls. This identity is only known after the version is created, so the role cannot be pre-provisioned by IaC. The script parses `instance_identity.principal_id` from the version creation response and grants Azure AI User (`53ca6127`) on the AI account, then waits 30 seconds for propagation.
-
 #### Skipping infrastructure on subsequent deployments
 
 If you only changed agent code (not infra), skip the Bicep step:
@@ -297,7 +294,7 @@ If you only changed agent code (not infra), skip the Bicep step:
 
 ### Terraform
 
-`deployment/deploy-terraform.sh` runs the same seven steps, substituting `terraform apply` for `az deployment sub create` and `terraform output` for `az deployment sub show`. All image build, push, agent creation, and instance identity role grant steps are identical.
+`deployment/deploy-terraform.sh` runs the same six steps, substituting `terraform apply` for `az deployment sub create` and `terraform output` for `az deployment sub show`. All image build, push, and agent creation steps are identical.
 
 ```bash
 chmod +x deployment/deploy-terraform.sh

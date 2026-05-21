@@ -157,35 +157,6 @@ AGENT_VERSION_RESPONSE=$(curl -s -f -X POST \
 
 AGENT_VERSION=$(echo "${AGENT_VERSION_RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Step 7: Grant Foundry User to the agent version's instance identity
-#
-# Foundry Agent Service provisions a dedicated per-version managed identity
-# (instance_identity) for each hosted agent version. The container
-# authenticates as this identity — NOT the project managed identity — when
-# making model calls. This identity is only known after the version is created,
-# so the role must be granted here rather than in the infrastructure step.
-#
-# Role: Foundry User (53ca6127) on the AI account
-# ─────────────────────────────────────────────────────────────────────────────
-echo "==> Granting Foundry User (53ca6127) to agent version instance identity..."
-INSTANCE_PRINCIPAL=$(echo "${AGENT_VERSION_RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin)['instance_identity']['principal_id'])")
-SUBID=$(az account show --query id -o tsv)
-ACCOUNT_RESOURCE_ID=$(az resource list \
-  --name "${AI_ACCOUNT_NAME}" \
-  --resource-type "Microsoft.CognitiveServices/accounts" \
-  --query "[0].id" -o tsv)
-ROLE_FOUNDRY_USER="53ca6127-db72-4b80-b1b0-d745d6d5456d"  # Foundry User
-
-az role assignment create \
-  --role "${ROLE_FOUNDRY_USER}" \
-  --assignee-object-id "${INSTANCE_PRINCIPAL}" \
-  --assignee-principal-type ServicePrincipal \
-  --scope "${ACCOUNT_RESOURCE_ID}" \
-  --output none 2>/dev/null || echo "    Role already assigned."
-
-echo "    Waiting 30s for RBAC propagation..."
-sleep 30
 echo "    Agent name    : ${AGENT_NAME}"
 echo "    Agent version : ${AGENT_VERSION}"
 echo "    Portal URL    : https://ai.azure.com/"
