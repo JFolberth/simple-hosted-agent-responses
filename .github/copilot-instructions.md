@@ -165,4 +165,4 @@ The Foundry runtime injects these automatically at container start — do not se
 - Do not place an `azure.yaml` at the repo root — azd must be run from `deployment/` where it finds the generated `azure.yaml`.
 - Do not commit `deployment/azure.yaml` — it is gitignored and generated locally by `deployment/azd-select.sh`.
 - Do not modify `infra/` or `src/` to accommodate azd — the `deployment/infra-azd/` shim and `deployment/azure-*.yaml` files are the only azd-specific additions.
-- Do not change the shared post-infra steps (Steps 2–7: read outputs, RBAC, Docker, image push, agent version creation, instance identity role grant) in `deploy-bicep.sh` without making the equivalent change in `deploy-terraform.sh`, and vice versa. Only Step 1 (infrastructure provisioning) intentionally differs between the two scripts.
+- Do not change the shared post-infra steps (Steps 2–6: read outputs, RBAC, Docker login, build/push image, create agent version) in `deploy-bicep.sh` without making the equivalent change in `deploy-terraform.sh`, and vice versa. Only Step 1 (infrastructure provisioning) intentionally differs between the two scripts.
