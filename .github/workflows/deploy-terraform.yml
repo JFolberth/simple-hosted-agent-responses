@@ -3,8 +3,12 @@ name: Deploy (Terraform)
 on:
   workflow_call:
     inputs:
-      image:
-        description: Full container image reference (acr/image_name:image_tag)
+      image_name:
+        description: Container image name
+        required: true
+        type: string
+      image_tag:
+        description: Image tag produced by the build job
         required: true
         type: string
       agent_name:
@@ -32,7 +36,7 @@ on:
         required: true
 
 jobs:
-  # ── Deploy Terraform infrastructure ────────────────────────────────────────
+  # ── Deploy Terraform infrastructure ───────────────────────────────────────────────────────
   deploy-iac:
     name: Deploy Terraform infrastructure
     runs-on: ubuntu-latest
@@ -48,6 +52,7 @@ jobs:
     outputs:
       project_endpoint: ${{ steps.read-outputs.outputs.project_endpoint }}
       model_deployment_name: ${{ steps.read-outputs.outputs.model_deployment_name }}
+      acr_endpoint: ${{ steps.read-outputs.outputs.acr_endpoint }}
 
     steps:
       - name: Download Terraform code artifact
@@ -92,11 +97,48 @@ jobs:
           _get() { echo "$OUTPUTS" | python3 -c "import sys,json; print(json.load(sys.stdin)['$1']['value'])"; }
           echo "project_endpoint=$(_get AZURE_AI_PROJECT_ENDPOINT)" >> "$GITHUB_OUTPUT"
           echo "model_deployment_name=$(_get AZURE_AI_MODEL_DEPLOYMENT_NAME)" >> "$GITHUB_OUTPUT"
+          echo "acr_endpoint=$(_get AZURE_CONTAINER_REGISTRY_ENDPOINT)" >> "$GITHUB_OUTPUT"
 
-  # ── Update hosted agent version ─────────────────────────────────────────────
+  # ── Push image to Terraform ACR ────────────────────────────────────────────────────────
+  push-image:
+    name: Push image to ACR
+    needs: deploy-iac
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: agent-image
+
+      - name: Load Docker image
+        run: docker load < agent-image.tar.gz
+
+      - name: Azure login
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Authenticate to ACR
+        run: |
+          ACR_ENDPOINT="${{ needs.deploy-iac.outputs.acr_endpoint }}"
+          az acr login --name "${ACR_ENDPOINT%.azurecr.io}"
+
+      - name: Tag and push image
+        run: |
+          FULL_IMAGE="${{ needs.deploy-iac.outputs.acr_endpoint }}/${{ inputs.image_name }}:${{ inputs.image_tag }}"
+          docker tag "${{ inputs.image_name }}:${{ inputs.image_tag }}" "${FULL_IMAGE}"
+          docker push "${FULL_IMAGE}"
+
+  # ── Update hosted agent version ────────────────────────────────────────────────────
   update-agent:
     name: Update agent version
-    needs: deploy-iac
+    needs: [deploy-iac, push-image]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -118,5 +160,5 @@ jobs:
         with:
           project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
           agent_name: ${{ inputs.agent_name }}
-          image: ${{ inputs.image }}
+          image: ${{ needs.deploy-iac.outputs.acr_endpoint }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
           model_deployment_name: ${{ needs.deploy-iac.outputs.model_deployment_name }}
