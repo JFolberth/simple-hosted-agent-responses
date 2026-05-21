@@ -176,6 +176,7 @@ Apply the **Don't Repeat Yourself** principle to GitHub Actions. When the same l
 **Composite action conventions:**
 - Create a dedicated folder: `.github/actions/<name>/action.yml`.
 - Pass all inputs via `env:` vars inside `run:` steps — never interpolate `${{ inputs.* }}` directly into shell strings (injection risk).
+- The calling job must run `actions/checkout@v6` before invoking any local composite action — the runner needs the repo on disk to resolve `./.github/actions/<name>`.
 - The calling job handles Azure CLI authentication (`azure/login@v3`) before invoking the action; the action assumes an authenticated session. This keeps actions auth-strategy-agnostic.
 - Existing composite actions in this repo: `update-agent` (Foundry data plane POST), `push-image` (ACR image push).
 
