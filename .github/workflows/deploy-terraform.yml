@@ -69,6 +69,10 @@ jobs:
           environment_name: ${{ inputs.environment_name }}
           location: ${{ inputs.location || 'swedencentral' }}
           ai_deployments_location: ${{ inputs.ai_deployments_location || 'swedencentral' }}
+          backend_resource_group: ${{ vars.TF_BACKEND_RESOURCE_GROUP }}
+          backend_storage_account: ${{ vars.TF_BACKEND_STORAGE_ACCOUNT }}
+          backend_container: ${{ vars.TF_BACKEND_CONTAINER }}
+          backend_key: ${{ vars.TF_BACKEND_KEY }}
 
       - name: Push image to ACR
         uses: ./.github/actions/push-image

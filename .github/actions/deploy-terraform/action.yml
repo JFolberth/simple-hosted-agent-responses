@@ -14,6 +14,22 @@ inputs:
     description: Azure region for AI model deployments
     required: false
     default: swedencentral
+  backend_resource_group:
+    description: Resource group of the remote state storage account (optional — local state used if omitted)
+    required: false
+    default: ''
+  backend_storage_account:
+    description: Storage account name for remote state (optional)
+    required: false
+    default: ''
+  backend_container:
+    description: Blob container name for remote state (optional)
+    required: false
+    default: ''
+  backend_key:
+    description: State blob key (filename) for remote state (optional)
+    required: false
+    default: ''
 
 outputs:
   project_endpoint:
@@ -41,6 +57,26 @@ runs:
         terraform_version: ">= 1.9"
         # Disable wrapper so terraform output is parseable
         terraform_wrapper: false
+
+    - name: Configure remote backend
+      # Generates backend_override.tf if all four TF_BACKEND_* vars are provided.
+      # Terraform override files take precedence over backend "local" {} in providers.tf,
+      # switching the backend to azurerm for this run without modifying providers.tf.
+      shell: bash
+      working-directory: infra/terraform
+      env:
+        BACKEND_RG: ${{ inputs.backend_resource_group }}
+        BACKEND_SA: ${{ inputs.backend_storage_account }}
+        BACKEND_CONTAINER: ${{ inputs.backend_container }}
+        BACKEND_KEY: ${{ inputs.backend_key }}
+      run: |
+        if [[ -n "$BACKEND_SA" && -n "$BACKEND_RG" && -n "$BACKEND_CONTAINER" && -n "$BACKEND_KEY" ]]; then
+          printf 'terraform {\n  backend "azurerm" {\n    resource_group_name  = "%s"\n    storage_account_name = "%s"\n    container_name       = "%s"\n    key                  = "%s"\n    use_azuread_auth     = true\n  }\n}\n' \
+            "$BACKEND_RG" "$BACKEND_SA" "$BACKEND_CONTAINER" "$BACKEND_KEY" > backend_override.tf
+          echo "Remote backend: ${BACKEND_SA}/${BACKEND_CONTAINER}/${BACKEND_KEY}"
+        else
+          echo "No TF_BACKEND_* vars set — using local state."
+        fi
 
     - name: Terraform init
       shell: bash

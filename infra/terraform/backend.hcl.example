@@ -1,0 +1,22 @@
+# backend.hcl — Remote state configuration for the azurerm backend.
+#
+# This file documents the remote state pattern for team and production use.
+# Copy it to backend.hcl (gitignored) and fill in your values, then run:
+#
+#   terraform init -backend-config=backend.hcl -migrate-state
+#
+# backend.hcl is gitignored — do not commit it.
+#
+# For GitHub Actions, set these repository variables and the deploy-terraform
+# workflow will configure the remote backend automatically:
+#
+#   TF_BACKEND_RESOURCE_GROUP    — resource group containing the storage account
+#   TF_BACKEND_STORAGE_ACCOUNT   — storage account name
+#   TF_BACKEND_CONTAINER         — blob container name
+#   TF_BACKEND_KEY               — state file name (blob key)
+
+resource_group_name  = "rg-terraformstate-dev"      # Resource group containing the storage account
+storage_account_name = "mystorageaccount"            # Storage account name
+container_name       = "tfstate"                     # Blob container name
+key                  = "simple-hosted-agent.tfstate" # State file name (blob key)
+use_azuread_auth     = true                          # Required when key-based auth is disabled on the storage account

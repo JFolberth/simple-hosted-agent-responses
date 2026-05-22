@@ -52,3 +52,8 @@ $RECYCLE.BIN/
 *.tfvars.backup
 crash.log
 crash.*.log
+
+# Terraform backend config — contains non-secret connection values but is
+# environment-specific and should not be committed. See backend.hcl.example.
+infra/terraform/backend.hcl
+infra/terraform/backend_override.tf
