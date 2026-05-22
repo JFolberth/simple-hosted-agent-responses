@@ -64,10 +64,17 @@ Use the major version tag (e.g. `@v6`) — it floats to the latest patch automat
 1. **Explore first** — read the existing workflows and actions before making changes to understand current structure
 2. **Check for duplication** — if a new step matches what an existing composite action does, use the action
 3. **Smallest change** — don't refactor beyond what was asked; only extract to an action if the same steps appear in more than one place
-4. **Validate YAML** — after every edit, run the following command and confirm all files print `OK` before declaring the change done:
+4. **Validate YAML** — after every edit, run the following command and confirm all files print `OK` before declaring the change done. The loader checks for duplicate keys (which `yaml.safe_load` silently ignores but GitHub's parser rejects):
    ```bash
    python3 -c "
 import yaml, sys
+class _DupCheckLoader(yaml.SafeLoader): pass
+def _chk(loader, node):
+    keys = [loader.construct_object(k, deep=False) for k, _ in node.value]
+    dupes = [k for i, k in enumerate(keys) if k in keys[:i]]
+    if dupes: raise yaml.YAMLError(f'Duplicate key(s) {dupes} at {node.start_mark}')
+    return loader.construct_mapping(node, deep=True)
+_DupCheckLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _chk)
 for f in [
     '.github/workflows/deploy-bicep.yml',
     '.github/workflows/deploy-terraform.yml',
@@ -80,11 +87,10 @@ for f in [
     '.github/actions/update-agent/action.yml',
 ]:
     try:
-        yaml.safe_load(open(f))
+        yaml.load(open(f), Loader=_DupCheckLoader)
         print(f'OK  {f}')
     except yaml.YAMLError as e:
-        print(f'ERR {f}: {e}')
-        sys.exit(1)
+        print(f'ERR {f}: {e}'); sys.exit(1)
 "
    ```
 5. **Verify references** — check that all `needs:` references, artifact names, and secret names are consistent across the workflow chain

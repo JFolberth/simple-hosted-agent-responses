@@ -197,3 +197,32 @@ Apply the **Don't Repeat Yourself** principle to GitHub Actions. When the same l
 - Do not modify `infra/` or `src/` to accommodate azd — the `deployment/infra-azd/` shim and `deployment/azure-*.yaml` files are the only azd-specific additions.
 - Do not change the shared post-infra steps (Steps 2–6: read outputs, RBAC, Docker login, build/push image, create agent version) in `deploy-bicep.sh` without making the equivalent change in `deploy-terraform.sh`, and vice versa. Only Step 1 (infrastructure provisioning) intentionally differs between the two scripts.
 - Do not duplicate steps across workflows — extract shared steps to a composite action in `.github/actions/`. See the DRY pattern section above.
+- Do not declare a workflow change done without running the YAML validation command below and confirming all files print `OK`. Use a duplicate-key-aware loader — `yaml.safe_load` silently ignores duplicate keys but GitHub's parser rejects them:
+  ```bash
+  python3 -c "
+import yaml, sys
+class _DupCheckLoader(yaml.SafeLoader): pass
+def _chk(loader, node):
+    keys = [loader.construct_object(k, deep=False) for k, _ in node.value]
+    dupes = [k for i, k in enumerate(keys) if k in keys[:i]]
+    if dupes: raise yaml.YAMLError(f'Duplicate key(s) {dupes} at {node.start_mark}')
+    return loader.construct_mapping(node, deep=True)
+_DupCheckLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _chk)
+for f in [
+    '.github/workflows/deploy-bicep.yml',
+    '.github/workflows/deploy-terraform.yml',
+    '.github/workflows/ci-cd.yml',
+    '.github/workflows/deploy.yml',
+    '.github/workflows/build.yml',
+    '.github/actions/deploy-bicep/action.yml',
+    '.github/actions/deploy-terraform/action.yml',
+    '.github/actions/push-image/action.yml',
+    '.github/actions/update-agent/action.yml',
+]:
+    try:
+        yaml.load(open(f), Loader=_DupCheckLoader)
+        print(f'OK  {f}')
+    except yaml.YAMLError as e:
+        print(f'ERR {f}: {e}'); sys.exit(1)
+"
+  ```
