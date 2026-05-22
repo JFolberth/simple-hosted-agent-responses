@@ -46,23 +46,22 @@ runs:
           --resource "https://ai.azure.com/" \
           --query accessToken -o tsv)
 
-        AGENT_REQUEST_BODY=$(python3 -c "
-import json, os
-body = {
-  'metadata': {'enableVnextExperience': 'true'},
-  'definition': {
-    'kind': 'hosted',
-    'container_protocol_versions': [{'protocol': 'responses', 'version': '1.0.0'}],
-    'cpu': os.environ['CPU'],
-    'memory': os.environ['MEMORY'],
-    'environment_variables': {
-      'AZURE_AI_MODEL_DEPLOYMENT_NAME': os.environ['MODEL_DEPLOYMENT_NAME']
-    },
-    'image': os.environ['IMAGE']
-  }
-}
-print(json.dumps(body))
-")
+        AGENT_REQUEST_BODY=$(jq -n \
+          --arg cpu            "$CPU" \
+          --arg memory         "$MEMORY" \
+          --arg model          "$MODEL_DEPLOYMENT_NAME" \
+          --arg image          "$IMAGE" \
+          '{
+            metadata: {enableVnextExperience: "true"},
+            definition: {
+              kind: "hosted",
+              container_protocol_versions: [{protocol: "responses", version: "1.0.0"}],
+              cpu: $cpu,
+              memory: $memory,
+              environment_variables: {AZURE_AI_MODEL_DEPLOYMENT_NAME: $model},
+              image: $image
+            }
+          }')
 
         RESPONSE=$(curl -s -f -X POST \
           "${PROJECT_ENDPOINT}/agents/${AGENT_NAME}/versions?api-version=2025-11-15-preview" \
