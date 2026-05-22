@@ -159,7 +159,6 @@ output AZURE_AI_ACCOUNT_NAME string = foundry.outputs.aiServicesAccountName
 output AZURE_AI_PROJECT_NAME string = foundryProject.outputs.projectName
 output AZURE_AI_PROJECT_ID string = foundryProject.outputs.projectId
 output AZURE_AI_PROJECT_ENDPOINT string = foundryProject.outputs.AZURE_AI_PROJECT_ENDPOINT
-output AZURE_OPENAI_ENDPOINT string = foundry.outputs.AZURE_OPENAI_ENDPOINT
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = acr.outputs.containerRegistryLoginServer
 output AZURE_AI_MODEL_DEPLOYMENT_NAME string = deployments![0].name
 

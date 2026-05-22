@@ -97,16 +97,17 @@ resource logAnalyticsReaderRoleAssignment 'Microsoft.Authorization/roleAssignmen
 }
 
 // ── Hosted-agent-specific ──────────────────────────────────────────────────
-// Azure AI User for the project managed identity — grants
+// Foundry User for the project managed identity — grants
 // Microsoft.CognitiveServices/* data actions on the AI account so the
 // container running inside the hosted agent can call the model endpoint.
+// (Previously named "Azure AI User"; the GUID 53ca6127 is unchanged.)
 //
 // The Foundry runtime injects FOUNDRY_PROJECT_ENDPOINT into the container
 // automatically; this role is what allows that endpoint to be called with
 // the container's managed identity. Without it the container receives:
 //   401 PermissionDenied — lacks Microsoft.CognitiveServices/accounts/
 //   AIServices/agents/write to perform POST /api/projects/{name}/openai/*
-resource aiUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource foundryUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: aiAccount
   name: guid(resourceGroup().id, aiFoundryProjectName, '53ca6127-db72-4b80-b1b0-d745d6d5456d') // Foundry User
   properties: {

@@ -1,10 +1,10 @@
 using './main.bicep'
 
-param environmentName = 'simple-hosted-agent3'
-param resourceGroupName = 'rg-simple-hosted-agent3-dev'
+param environmentName = 'simple-hosted-agent-bicep'
+param resourceGroupName = 'rg-simple-hosted-agent-bicep'
 param location = 'swedencentral'
 param aiDeploymentsLocation = 'swedencentral'
-param aiFoundryProjectName = 'ai-project3'
+param aiFoundryProjectName = 'ai-project'
 param deployments = [
   {
     name: 'gpt-4.1-mini'
