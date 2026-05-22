@@ -38,11 +38,11 @@ Five resources are deployed to a single resource group:
 
 | Module (Bicep \| Terraform) | Resource type | Purpose |
 |---|---|---|
-| `foundry.bicep` \| `modules/foundry/` | `CognitiveServices/accounts` (kind `AIServices`) | AI Services account + model deployments |
-| `foundry-project.bicep` \| `modules/foundry_project/` | `CognitiveServices/accounts/projects` | Foundry project + App Insights connection + **Foundry User** role for the project MI on the AI account *(hosted-agent-specific: grants `Microsoft.CognitiveServices/*` data actions so the container MI can call the model endpoint at runtime)* |
-| `acr.bicep` \| `modules/acr/` | `ContainerRegistry/registries` | Container image registry + AcrPull role for the project MI + **ACR connection on the Foundry project** *(hosted-agent-specific: tells the micro VM runtime which registry to pull from; project MI handles auth — no stored credentials)* |
-| `loganalytics.bicep` \| `modules/loganalytics/` | `OperationalInsights/workspaces` | Log retention backend for Application Insights |
-| `applicationinsights.bicep` \| `modules/applicationinsights/` | `Insights/components` | Distributed traces, metrics, and exceptions (also used by prompt-based agents and evaluations) |
+| `foundry.bicep` \| `foundry/main.tf` | `CognitiveServices/accounts` (kind `AIServices`) | AI Services account + model deployments |
+| `foundry-project.bicep` \| `foundry_project/main.tf` | `CognitiveServices/accounts/projects` | Foundry project + App Insights connection + **Foundry User** role for the project MI on the AI account *(hosted-agent-specific: grants `Microsoft.CognitiveServices/*` data actions so the container MI can call the model endpoint at runtime)* |
+| `acr.bicep` \| `acr/main.tf` | `ContainerRegistry/registries` | Container image registry + AcrPull role for the project MI + **ACR connection on the Foundry project** *(hosted-agent-specific: tells the micro VM runtime which registry to pull from; project MI handles auth — no stored credentials)* |
+| `loganalytics.bicep` \| `loganalytics/main.tf` | `OperationalInsights/workspaces` | Log retention backend for Application Insights |
+| `applicationinsights.bicep` \| `applicationinsights/main.tf` | `Insights/components` | Distributed traces, metrics, and exceptions (also used by prompt-based agents and evaluations) |
 
 For what each IaC output is and where it's consumed by the deploy paths, see [IaC outputs reference](docs/iac-outputs.md).
 
