@@ -22,7 +22,7 @@ Skip the plan step only when the user explicitly says "go ahead", "just do it", 
 - **Repeated steps** across jobs or workflows → extract to a composite action in `.github/actions/<name>/action.yml`
 - **Repeated jobs or job sequences** → extract to a reusable workflow (`.github/workflows/<name>.yml`) with `on: workflow_call:`
 - Before writing any step inline, check whether an existing composite action in `.github/actions/` already covers it
-- Existing actions in this repo: `push-image` (ACR image push), `update-agent` (Foundry data plane POST)
+- Existing actions in this repo: `deploy-bicep` (Bicep IaC deploy + outputs), `deploy-terraform` (Terraform IaC deploy + outputs), `push-image` (ACR image push), `update-agent` (Foundry data plane POST)
 
 ### Composite Action Conventions
 - Folder: `.github/actions/<name>/action.yml` — one action per folder

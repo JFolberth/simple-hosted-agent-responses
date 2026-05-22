@@ -1,0 +1,64 @@
+name: Deploy Bicep Infrastructure
+description: Deploys Azure infrastructure via Bicep and returns IaC outputs. Assumes Azure CLI is already authenticated in the calling job.
+
+inputs:
+  environment_name:
+    description: Environment name used in the deployment label
+    required: false
+    default: main
+  location:
+    description: Azure region for the subscription-level deployment metadata
+    required: false
+    default: swedencentral
+
+outputs:
+  project_endpoint:
+    description: Foundry project endpoint URL
+    value: ${{ steps.read-outputs.outputs.project_endpoint }}
+  model_deployment_name:
+    description: AI model deployment name
+    value: ${{ steps.read-outputs.outputs.model_deployment_name }}
+  acr_endpoint:
+    description: Container registry login server
+    value: ${{ steps.read-outputs.outputs.acr_endpoint }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download Bicep code artifact
+      uses: actions/download-artifact@v8
+      with:
+        name: bicep-code
+        path: infra/bicep/
+
+    - name: Install Bicep CLI
+      shell: bash
+      run: az bicep install
+
+    - name: Deploy Bicep infrastructure
+      shell: bash
+      env:
+        ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+        LOCATION: ${{ inputs.location }}
+      run: |
+        az deployment sub create \
+          --name          "deploy-${ENVIRONMENT_NAME}" \
+          --location      "${LOCATION}" \
+          --template-file infra/bicep/main.bicep \
+          --parameters    infra/bicep/main.bicepparam \
+          --output none
+
+    - name: Read deployment outputs
+      id: read-outputs
+      shell: bash
+      env:
+        ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+      run: |
+        OUTPUTS=$(az deployment sub show \
+          --name "deploy-${ENVIRONMENT_NAME}" \
+          --query properties.outputs \
+          --output json)
+        _get() { echo "$OUTPUTS" | python3 -c "import sys,json; d={k.upper():v for k,v in json.load(sys.stdin).items()}; print(d['$1']['value'])"; }
+        echo "project_endpoint=$(_get AZURE_AI_PROJECT_ENDPOINT)" >> "$GITHUB_OUTPUT"
+        echo "model_deployment_name=$(_get AZURE_AI_MODEL_DEPLOYMENT_NAME)" >> "$GITHUB_OUTPUT"
+        echo "acr_endpoint=$(_get AZURE_CONTAINER_REGISTRY_ENDPOINT)" >> "$GITHUB_OUTPUT"

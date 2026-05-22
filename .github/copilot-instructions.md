@@ -178,7 +178,7 @@ Apply the **Don't Repeat Yourself** principle to GitHub Actions. When the same l
 - Pass all inputs via `env:` vars inside `run:` steps — never interpolate `${{ inputs.* }}` directly into shell strings (injection risk).
 - The calling job must run `actions/checkout@v6` before invoking any local composite action — the runner needs the repo on disk to resolve `./.github/actions/<name>`.
 - The calling job handles Azure CLI authentication (`azure/login@v3`) before invoking the action; the action assumes an authenticated session. This keeps actions auth-strategy-agnostic.
-- Existing composite actions in this repo: `update-agent` (Foundry data plane POST), `push-image` (ACR image push).
+- Existing composite actions in this repo: `deploy-bicep` (Bicep IaC deploy + outputs), `deploy-terraform` (Terraform IaC deploy + outputs), `push-image` (ACR image push), `update-agent` (Foundry data plane POST).
 
 **Reusable workflow conventions:**
 - Declare `on: workflow_call:` only (no `push:` / `pull_request:` triggers) for workflows that are always called from another workflow.

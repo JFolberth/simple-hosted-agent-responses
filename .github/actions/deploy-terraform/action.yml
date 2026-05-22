@@ -1,0 +1,73 @@
+name: Deploy Terraform Infrastructure
+description: Deploys Azure infrastructure via Terraform and returns IaC outputs. Assumes Azure CLI is authenticated and ARM_ env vars are set at the calling job level.
+
+inputs:
+  environment_name:
+    description: Environment name passed as a Terraform variable
+    required: false
+    default: ''
+  location:
+    description: Azure region for the resource group
+    required: false
+    default: swedencentral
+  ai_deployments_location:
+    description: Azure region for AI model deployments
+    required: false
+    default: swedencentral
+
+outputs:
+  project_endpoint:
+    description: Foundry project endpoint URL
+    value: ${{ steps.read-outputs.outputs.project_endpoint }}
+  model_deployment_name:
+    description: AI model deployment name
+    value: ${{ steps.read-outputs.outputs.model_deployment_name }}
+  acr_endpoint:
+    description: Container registry login server
+    value: ${{ steps.read-outputs.outputs.acr_endpoint }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download Terraform code artifact
+      uses: actions/download-artifact@v8
+      with:
+        name: terraform-code
+        path: infra/terraform/
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v4
+      with:
+        terraform_version: ">= 1.9"
+        # Disable wrapper so terraform output is parseable
+        terraform_wrapper: false
+
+    - name: Terraform init
+      shell: bash
+      working-directory: infra/terraform
+      run: terraform init
+
+    - name: Terraform apply
+      shell: bash
+      working-directory: infra/terraform
+      env:
+        ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+        LOCATION: ${{ inputs.location }}
+        AI_DEPLOYMENTS_LOCATION: ${{ inputs.ai_deployments_location }}
+      run: |
+        terraform apply -auto-approve -input=false \
+          -var="environment_name=${ENVIRONMENT_NAME}" \
+          -var="location=${LOCATION}" \
+          -var="ai_deployments_location=${AI_DEPLOYMENTS_LOCATION}" \
+          -var-file=terraform.tfvars
+
+    - name: Read Terraform outputs
+      id: read-outputs
+      shell: bash
+      working-directory: infra/terraform
+      run: |
+        OUTPUTS=$(terraform output -json)
+        _get() { echo "$OUTPUTS" | python3 -c "import sys,json; print(json.load(sys.stdin)['$1']['value'])"; }
+        echo "project_endpoint=$(_get AZURE_AI_PROJECT_ENDPOINT)" >> "$GITHUB_OUTPUT"
+        echo "model_deployment_name=$(_get AZURE_AI_MODEL_DEPLOYMENT_NAME)" >> "$GITHUB_OUTPUT"
+        echo "acr_endpoint=$(_get AZURE_CONTAINER_REGISTRY_ENDPOINT)" >> "$GITHUB_OUTPUT"
