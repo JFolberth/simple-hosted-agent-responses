@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.43.8.12551",
-      "templateHash": "16628685913731258154"
+      "templateHash": "17346284053305739330"
     }
   },
   "definitions": {
@@ -488,7 +488,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.43.8.12551",
-              "templateHash": "14291500487765878181"
+              "templateHash": "16906894348226960219"
             }
           },
           "definitions": {
@@ -597,19 +597,6 @@
                 "aiAccount"
               ]
             },
-            "aiAccount::aiFoundryAccountCapabilityHost": {
-              "type": "Microsoft.CognitiveServices/accounts/capabilityHosts",
-              "apiVersion": "2025-10-01-preview",
-              "name": "[format('{0}/{1}', format('ai-account-{0}', variables('resourceToken')), 'agents')]",
-              "properties": {
-                "capabilityHostKind": "Agents",
-                "enablePublicHostingEnvironment": true
-              },
-              "dependsOn": [
-                "aiAccount",
-                "aiAccount::seqDeployments"
-              ]
-            },
             "aiAccount": {
               "type": "Microsoft.CognitiveServices/accounts",
               "apiVersion": "2026-03-01",
@@ -644,10 +631,6 @@
             "aiServicesAccountName": {
               "type": "string",
               "value": "[format('ai-account-{0}', variables('resourceToken'))]"
-            },
-            "AZURE_OPENAI_ENDPOINT": {
-              "type": "string",
-              "value": "[reference('aiAccount').endpoints['OpenAI Language Model Instance API']]"
             }
           }
         }
@@ -1507,10 +1490,6 @@
     "AZURE_AI_PROJECT_ENDPOINT": {
       "type": "string",
       "value": "[reference('foundryProject').outputs.AZURE_AI_PROJECT_ENDPOINT.value]"
-    },
-    "AZURE_OPENAI_ENDPOINT": {
-      "type": "string",
-      "value": "[reference('foundry').outputs.AZURE_OPENAI_ENDPOINT.value]"
     },
     "AZURE_CONTAINER_REGISTRY_ENDPOINT": {
       "type": "string",

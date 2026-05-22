@@ -82,7 +82,7 @@ resource "azapi_resource" "log_analytics_reader_role" {
   }
 }
 
-# ── Azure AI User ──────────────────────────────────────────────────────────────
+# ── Foundry User ──────────────────────────────────────────────────────────────
 # Grants the project MI Microsoft.CognitiveServices/* data actions on the AI
 # account so the container can call the model endpoint. Without this the
 # container receives 401 PermissionDenied on every model call.

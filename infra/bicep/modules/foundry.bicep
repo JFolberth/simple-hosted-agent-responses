@@ -50,7 +50,6 @@ resource aiAccount 'Microsoft.CognitiveServices/accounts@2026-03-01' = {
 
 output accountId string = aiAccount.id
 output aiServicesAccountName string = aiAccount.name
-output AZURE_OPENAI_ENDPOINT string = aiAccount.properties.endpoints['OpenAI Language Model Instance API']
 
 type deploymentsType = {
   @description('Specify the name of cognitive service account deployment.')

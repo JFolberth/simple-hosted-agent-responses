@@ -90,7 +90,7 @@ The deploy scripts perform these operations. `azd` handles all of this automatic
 > **Why assign at project scope explicitly, even with subscription-level access?**
 > The Foundry data plane evaluates `Microsoft.CognitiveServices/accounts/AIServices/agents/write` at the scope of the Foundry **project** resource specifically. Subscription or resource group scoped role assignments are not reliably inherited by the Foundry data plane. The Microsoft docs state:
 >
-> > *"Azure AI Project Manager at the project scope is the recommended role assignment for agent creators, as that role includes both the required data plane permissions and the ability to assign the Azure AI User role."*
+> > *"Foundry Project Manager at the project scope is the recommended role assignment for agent creators, as that role includes both the required data plane permissions and the ability to assign the Foundry User role."*
 > > — [Hosted agent permissions reference — Agent creation](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-permissions#agent-creation)
 >
 > The deploy scripts handle this automatically (Step 3) with an idempotent `az role assignment create` followed by a 30-second propagation wait.

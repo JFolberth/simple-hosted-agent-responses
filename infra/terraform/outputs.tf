@@ -18,11 +18,6 @@ output "AZURE_AI_PROJECT_ENDPOINT" {
   value       = module.foundry_project.project_endpoint
 }
 
-output "AZURE_OPENAI_ENDPOINT" {
-  description = "OpenAI Language Model Instance API endpoint."
-  value       = module.foundry.openai_endpoint
-}
-
 output "AZURE_CONTAINER_REGISTRY_ENDPOINT" {
   description = "Login server hostname for the container registry."
   value       = module.acr.login_server
