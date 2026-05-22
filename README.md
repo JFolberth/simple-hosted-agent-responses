@@ -148,6 +148,30 @@ curl -X POST \
 
 ---
 
+## Customizing the Agent
+
+The agent's behavior is defined in [src/agent-framework/responses/basic/main.py](src/agent-framework/responses/basic/main.py). To change what it does, edit the `instructions=` argument on the `Agent(...)` call — this is the system prompt that shapes its persona, tone, and task focus:
+
+```python
+agent = Agent(
+    client=client,
+    instructions="You are a friendly assistant. Keep your answers brief.",
+    default_options={"store": False},
+)
+```
+
+Save the file, then redeploy the code without re-running infrastructure:
+
+```bash
+./deployment/deploy-bicep.sh --skip-infra      # or deploy-terraform.sh --skip-infra
+# or, with azd:
+azd deploy
+```
+
+The script rebuilds the container image, pushes it to ACR, and creates a new agent version pointing at the updated image. For more substantial changes — adding tools, swapping the model client, or switching protocols — see the [Agent Framework documentation](https://github.com/microsoft/agent-framework).
+
+---
+
 ## Running the Agent Locally
 
 For iterating on agent logic without a full cloud deployment:
