@@ -226,3 +226,28 @@ for f in [
         print(f'ERR {f}: {e}'); sys.exit(1)
 "
   ```
+
+---
+
+## Documentation conventions
+
+Documentation lives in `docs/`. The current files are:
+
+| File | Purpose |
+|---|---|
+| `docs/deploy-bicep.md` | Local deployment using Bicep (shell script + azd) |
+| `docs/deploy-terraform.md` | Local deployment using Terraform (shell script + azd) + state management |
+| `docs/github-actions.md` | CI/CD: workflow architecture, OIDC auth, RBAC, secrets/variables, composite actions |
+
+When adding new documentation:
+- Create a new file in `docs/`
+- Link to it from `README.md` under the Documentation section
+- Each doc must be **standalone** — a reader should not need to read another doc first. Cross-link for detail, not for basic understanding.
+
+Formatting rules:
+- Use Mermaid `flowchart TD` for architecture diagrams and decision trees
+- Use markdown tables for structured comparisons and reference data
+- Link to external Microsoft/GitHub/HashiCorp docs rather than reproducing content. Use stable URLs from `learn.microsoft.com`, `developer.hashicorp.com`, and `docs.github.com`
+- Role GUIDs, required fields (`enableVnextExperience`), and platform constraints (`--platform linux/amd64`) deserve block quote callouts
+
+Accuracy rule: **read the source file before documenting it**. Never document shell scripts, workflows, or actions from memory.

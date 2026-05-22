@@ -385,6 +385,18 @@ az deployment sub delete --name deploy-simple-hosted-agent
 
 ---
 
+## Documentation
+
+Detailed guides for each deployment path and the CI/CD pipeline:
+
+| Guide | What it covers |
+|---|---|
+| [Deploying with Bicep](docs/deploy-bicep.md) | Shell script and azd deployment using Bicep infrastructure |
+| [Deploying with Terraform](docs/deploy-terraform.md) | Shell script and azd deployment using Terraform; includes local and remote state management |
+| [GitHub Actions CI/CD](docs/github-actions.md) | Workflow architecture, OIDC auth setup, RBAC requirements, secrets/variables reference, composite action internals |
+
+---
+
 ## Further Reading
 
 - [What are hosted agents?](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents) — platform concepts, session model, and protocol comparison
