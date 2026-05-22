@@ -67,39 +67,14 @@ Install [VS Code](https://code.visualstudio.com/) and [Docker Desktop](https://w
    az login
    ```
 
-### Local — azd
+### Local prerequisites
 
-| Tool | Install |
-|---|---|
-| [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) | `brew install azure-cli` / [Windows installer](https://aka.ms/installazurecliwindows) |
-| [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) | `brew tap azure/azd && brew install azd` / [installer](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) |
+If not using the dev container, see the deployment guides for prerequisites and configuration:
 
-After installing azd, add the agent extension:
-```bash
-azd extension install azure.ai.agents
-```
+- [Deploying with Bicep](docs/deploy-bicep.md) — Azure CLI, Docker, Bicep (auto-installed via `az bicep install`)
+- [Deploying with Terraform](docs/deploy-terraform.md) — Azure CLI, Docker, Terraform ≥ 1.9
 
-No Bicep CLI or Terraform install needed — azd uses ACR remote build for the image and handles infra through the provider you select.
-
-### Local — Shell scripts (Bicep)
-
-> **Note:** The shell scripts require a Bash environment (macOS, Linux, WSL, or Azure Cloud Shell). They do not run natively on Windows. Use `azd` instead for a cross-platform deployment experience.
-
-| Tool | Install |
-|---|---|
-| [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) | `brew install azure-cli` / [Windows installer](https://aka.ms/installazurecliwindows) |
-| [Bicep CLI](https://learn.microsoft.com/azure/azure-resource-manager/bicep/install) | `az bicep install` |
-| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Platform installer |
-
-### Local — Shell scripts (Terraform)
-
-> **Note:** The shell scripts require a Bash environment (macOS, Linux, WSL, or Azure Cloud Shell). They do not run natively on Windows. Use `azd` instead for a cross-platform deployment experience or a devcontainer.
-
-| Tool | Install |
-|---|---|
-| [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) | `brew install azure-cli` / [Windows installer](https://aka.ms/installazurecliwindows) |
-| [Terraform](https://developer.hashicorp.com/terraform/install) | ≥ 1.9 — `brew install hashicorp/tap/terraform` / [installer](https://developer.hashicorp.com/terraform/install) |
-| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Platform installer |
+The shell scripts require a Bash environment (macOS, Linux, WSL, or Azure Cloud Shell). Use `azd` for cross-platform Windows support.
 
 ### Required Azure permissions (shell scripts)
 
@@ -124,188 +99,43 @@ If your identity has **Owner** at subscription scope it satisfies the ARM operat
 
 ---
 
-## Configuration
-
-### Bicep
-
-Before deploying, open `infra/bicep/main.bicepparam` and set values for your environment:
-
-```bicep
-param environmentName       = 'simple-hosted-agent'      // Used in resource naming
-param resourceGroupName     = 'rg-simple-hosted-agent-dev'
-param location              = 'swedencentral'             // Region for all resources
-param aiDeploymentsLocation = 'swedencentral'             // Region for model deployments (can differ)
-param aiFoundryProjectName  = 'ai-project'
-
-param deployments = [
-  {
-    name: 'gpt-4.1-mini'
-    model: {
-      format: 'OpenAI'
-      name: 'gpt-4.1-mini'
-      version: '2025-04-14'
-    }
-    sku: { name: 'Standard', capacity: 10 }
-  }
-]
-```
-
-**Choosing a region**: Not all models are available in every region. Run the following command to check what's available before deploying:
-
-```bash
-az cognitiveservices model list --location <region> \
-  --query "[?name=='gpt-4.1-mini'].{version:version, lifecycleStatus:lifecycleStatus}" \
-  --output table
-```
-
-Also update the top of `deployment/deploy-bicep.sh` to match:
-
-```bash
-ENVIRONMENT_NAME="simple-hosted-agent"   # Must match environmentName in main.bicepparam
-LOCATION="swedencentral"                 # Must match location in main.bicepparam
-```
-
-### Terraform
-
-Before deploying, open `infra/terraform/terraform.tfvars` and set values for your environment:
-
-```hcl
-environment_name        = "simple-hosted-agent"
-resource_group_name     = "rg-simple-hosted-agent"
-location                = "swedencentral"              # Region for the resource group
-ai_deployments_location = "swedencentral"              # Region for model deployments (can differ)
-ai_foundry_project_name = "ai-project"
-
-deployments = [
-  {
-    name = "gpt-4.1-mini"
-    model = {
-      format  = "OpenAI"
-      name    = "gpt-4.1-mini"
-      version = "2025-04-14"
-    }
-    sku = { name = "Standard", capacity = 10 }
-  }
-]
-```
-
-Also update `AGENT_NAME` at the top of `deployment/deploy-terraform.sh` to match the name you want to use in the Foundry portal.
-
-State is stored locally in `infra/terraform/terraform.tfstate`. This is suitable for development; for team or production use, switch to a remote backend (e.g. Azure Blob Storage).
-
----
-
 ## Deploying
 
-### Option 1 — azd (recommended)
-
-`azd` handles infrastructure provisioning, image build (via ACR remote build), and agent deployment in a single `azd up` command.
-
-**How it works under the hood:**
-
-1. `azd provision` runs Bicep/Terraform and creates all Azure resources.
-2. A `postprovision` hook (`deployment/scripts/grant-project-manager.sh`) runs automatically — it grants **Azure AI Project Manager** to the deploying principal at the Foundry project scope. This step is required because the Foundry data plane evaluates `Microsoft.CognitiveServices/accounts/AIServices/agents/write` at project scope specifically, and subscription/resource group scoped assignments are not reliably inherited. Without this grant, the next step gets a `401 PermissionDenied`.
-3. The `azure.ai.agents` azd extension calls the Foundry data plane (`POST .../agents/{name}/versions`) to register the container as a hosted agent version.
-
-**Prerequisites:** `azd` CLI installed + `azure.ai.agents` extension (both installed automatically in the dev container).
-
-**First-time setup:**
+### azd
 
 ```bash
-# 1. Log in to azd (separate from az login — azd has its own auth context)
-azd auth login
-
-# 2. Choose Bicep or Terraform — creates deployment/azure.yaml
+# 1. Select Bicep or Terraform (writes deployment/azure.yaml)
 ./deployment/azd-select.sh
 
-# 3. Move into the deployment directory (azd reads azure.yaml from CWD)
+# 2. Authenticate and configure
 cd deployment
-
-# 4. Create a new azd environment
+azd auth login
 azd env new <env-name>
-
-# 5. Set required environment variables
 azd env set AZURE_LOCATION swedencentral
 azd env set AZURE_TENANT_ID "$(az account show --query tenantId -o tsv)"
 
-# Bicep only:
-azd env set AZURE_AI_DEPLOYMENTS_LOCATION swedencentral
-
-# Terraform only (maps to TF_VAR_ai_deployments_location):
-azd env set AI_DEPLOYMENTS_LOCATION swedencentral
-
-# 6. Provision infrastructure and deploy the agent
+# 3. Provision infrastructure and deploy
 azd up
-```
 
-> **Why set `AZURE_TENANT_ID` explicitly?** The `azure.ai.agents` extension's deploy handler requires `AZURE_TENANT_ID` to authenticate against the Foundry data plane. azd normally injects this from its own auth context (populated by `azd auth login`), but setting it explicitly from `az account show` is the reliable fallback and works regardless of azd auth state.
-
-**Subsequent code-only changes:**
-
-```bash
-cd deployment
+# Subsequent code-only changes
 azd deploy
 ```
 
-> **Terraform note:** azd injects `TF_VAR_environment_name`, `TF_VAR_location`, and `TF_VAR_resource_group_name` automatically from standard azd environment variables. Set `AI_DEPLOYMENTS_LOCATION` to control `TF_VAR_ai_deployments_location`. The `infra/terraform/terraform.tfvars` file is still used as a fallback for any variables not set by azd.
+See [Deploying with Bicep](docs/deploy-bicep.md#azure-developer-cli-azd) or [Deploying with Terraform](docs/deploy-terraform.md#azure-developer-cli-azd) for the full setup, including IaC-specific environment variables and how azd maps to each deployment step.
 
-> **Model deployments:** The model deployment array is hardcoded in `deployment/infra-azd/main.bicepparam` (Bicep) or `infra/terraform/terraform.tfvars` (Terraform). Edit those files to change the model or capacity — there is no azd env var for this.
-
----
-
-### Option 2 — Shell scripts
-
-### Bicep
-
-`deployment/deploy-bicep.sh` performs the entire deployment in seven steps:
+### Shell scripts
 
 ```bash
-chmod +x deployment/deploy-bicep.sh
-./deployment/deploy-bicep.sh
+./deployment/deploy-bicep.sh          # Full deploy (Bicep)
+./deployment/deploy-terraform.sh      # Full deploy (Terraform)
+
+./deployment/deploy-bicep.sh --skip-infra      # Code changes only
+./deployment/deploy-terraform.sh --skip-infra  # Code changes only
 ```
 
-#### What it does
+See [Deploying with Bicep](docs/deploy-bicep.md) or [Deploying with Terraform](docs/deploy-terraform.md) for configuration, step-by-step walkthrough, and state management.
 
-**Step 1 — Deploy infrastructure**
-Runs `az deployment sub create` against `infra/bicep/main.bicep`. This creates the resource group and all six Azure resources. On subsequent runs, Bicep is idempotent — only changed resources are updated.
-
-**Step 2 — Read outputs**
-Retrieves `az deployment sub show` output values: AI account name, project name, ACR endpoint, and model deployment name. These drive every subsequent step.
-
-**Step 3 — Assign Azure AI Project Manager at project scope**
-The Foundry data plane checks the `agents/write` permission at the Foundry **project** resource scope specifically — subscription-level assignments are not reliably inherited. This step runs `az role assignment create` (idempotent) scoped to the project resource ID, then waits 30 seconds for RBAC propagation.
-
-**Step 4 — Authenticate to ACR**
-Runs `az acr login` so Docker can push to the private registry.
-
-**Step 5 — Build and push image**
-Builds the Docker image from `src/agent-framework/responses/basic/` and tags it with the short Git commit hash. Tags are immutable — each commit produces a new image tag.
-
-**Step 6 — Deploy the hosted agent**
-POSTs to the Foundry data plane (`{projectEndpoint}/agents/{name}/versions?api-version=2025-11-15-preview`) via `az rest` with `--resource https://ai.azure.com/`. The request body specifies `kind: hosted`, the container image tag, CPU/memory, protocol (`responses 1.0.0`), and the `AZURE_AI_MODEL_DEPLOYMENT_NAME` environment variable. The platform pulls the image, provisions a micro VM, and creates a dedicated Entra identity and endpoint for the agent. The Foundry runtime also injects `FOUNDRY_PROJECT_ENDPOINT` and `APPLICATIONINSIGHTS_CONNECTION_STRING` automatically. The management-plane CLI (`az cognitiveservices agent create`) is **not** used — it calls a separate start operation that returns 404 for hosted agents.
-
-#### Skipping infrastructure on subsequent deployments
-
-If you only changed agent code (not infra), skip the Bicep step:
-
-```bash
-./deployment/deploy-bicep.sh --skip-infra
-```
-
-### Terraform
-
-`deployment/deploy-terraform.sh` runs the same six steps, substituting `terraform apply` for `az deployment sub create` and `terraform output` for `az deployment sub show`. All image build, push, and agent creation steps are identical.
-
-```bash
-chmod +x deployment/deploy-terraform.sh
-./deployment/deploy-terraform.sh
-```
-
-Skip infrastructure on code-only changes:
-
-```bash
-./deployment/deploy-terraform.sh --skip-infra
-```
+For CI/CD automation, see [GitHub Actions CI/CD](docs/github-actions.md).
 
 ---
 
