@@ -36,13 +36,13 @@ See the official Microsoft documentation: [What are hosted agents?](https://lear
 
 Five resources are deployed to a single resource group:
 
-| Bicep | Terraform | Resource | Purpose |
-|---|---|---|---|
-| `foundry.bicep` | `modules/foundry/` | `Microsoft.CognitiveServices/accounts` (kind: `AIServices`) | AI Services account + model deployments |
-| `foundry-project.bicep` | `modules/foundry_project/` | `Microsoft.CognitiveServices/accounts/projects` | Foundry project + App Insights connection + **Foundry User** role for the project MI on the AI account *(hosted-agent-specific: the role lets the container MI call the model endpoint at runtime)* |
-| `acr.bicep` | `modules/acr/` | `Microsoft.ContainerRegistry/registries` | Container image registry + AcrPull role for the project MI + **ACR connection on the Foundry project** *(hosted-agent-specific: tells the micro VM runtime which registry to pull from; project MI handles auth — no stored credentials)* |
-| `loganalytics.bicep` | `modules/loganalytics/` | `Microsoft.OperationalInsights/workspaces` | Log retention backend for Application Insights |
-| `applicationinsights.bicep` | `modules/applicationinsights/` | `Microsoft.Insights/components` | Distributed traces, metrics, and exceptions (also used by prompt-based agents and evaluations) |
+| Module (Bicep \| Terraform) | Resource type | Purpose |
+|---|---|---|
+| `foundry.bicep` \| `modules/foundry/` | `CognitiveServices/accounts` (kind `AIServices`) | AI Services account + model deployments |
+| `foundry-project.bicep` \| `modules/foundry_project/` | `CognitiveServices/accounts/projects` | Foundry project + App Insights connection + **Foundry User** role for the project MI on the AI account *(hosted-agent-specific: grants `Microsoft.CognitiveServices/*` data actions so the container MI can call the model endpoint at runtime)* |
+| `acr.bicep` \| `modules/acr/` | `ContainerRegistry/registries` | Container image registry + AcrPull role for the project MI + **ACR connection on the Foundry project** *(hosted-agent-specific: tells the micro VM runtime which registry to pull from; project MI handles auth — no stored credentials)* |
+| `loganalytics.bicep` \| `modules/loganalytics/` | `OperationalInsights/workspaces` | Log retention backend for Application Insights |
+| `applicationinsights.bicep` \| `modules/applicationinsights/` | `Insights/components` | Distributed traces, metrics, and exceptions (also used by prompt-based agents and evaluations) |
 
 For what each IaC output is and where it's consumed by the deploy paths, see [IaC outputs reference](docs/iac-outputs.md).
 
