@@ -12,8 +12,11 @@ terraform {
     }
   }
 
-  # Local state — suitable for development and CI where state is not shared.
-  # Switch to a remote backend (e.g. azurerm) for team or production deployments.
+  # Local state — suitable for individual development and running locally.
+  # For team or production use, switch to a remote backend:
+  #   cp infra/terraform/backend.hcl.example infra/terraform/backend.hcl
+  #   terraform init -backend-config=backend.hcl -migrate-state
+  # For GitHub Actions, set TF_BACKEND_* repository variables (see backend.hcl.example).
   backend "local" {}
 }
 
