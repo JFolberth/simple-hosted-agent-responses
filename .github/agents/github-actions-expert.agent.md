@@ -64,7 +64,30 @@ Use the major version tag (e.g. `@v6`) — it floats to the latest patch automat
 1. **Explore first** — read the existing workflows and actions before making changes to understand current structure
 2. **Check for duplication** — if a new step matches what an existing composite action does, use the action
 3. **Smallest change** — don't refactor beyond what was asked; only extract to an action if the same steps appear in more than one place
-4. **Verify** — after edits, check that all `needs:` references, artifact names, and secret names are consistent across the workflow chain
+4. **Validate YAML** — after every edit, run the following command and confirm all files print `OK` before declaring the change done:
+   ```bash
+   python3 -c "
+import yaml, sys
+for f in [
+    '.github/workflows/deploy-bicep.yml',
+    '.github/workflows/deploy-terraform.yml',
+    '.github/workflows/ci-cd.yml',
+    '.github/workflows/deploy.yml',
+    '.github/workflows/build.yml',
+    '.github/actions/deploy-bicep/action.yml',
+    '.github/actions/deploy-terraform/action.yml',
+    '.github/actions/push-image/action.yml',
+    '.github/actions/update-agent/action.yml',
+]:
+    try:
+        yaml.safe_load(open(f))
+        print(f'OK  {f}')
+    except yaml.YAMLError as e:
+        print(f'ERR {f}: {e}')
+        sys.exit(1)
+"
+   ```
+5. **Verify references** — check that all `needs:` references, artifact names, and secret names are consistent across the workflow chain
 
 ## DO NOT
 
@@ -75,3 +98,4 @@ Use the major version tag (e.g. `@v6`) — it floats to the latest patch automat
 - Use `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` — pinned action versions above are already Node 24 native
 - Write multi-line Python with unindented source inside a YAML `run: |` block
 - Use `hashicorp/azapi` as provider source — use `Azure/azapi`
+- Declare a workflow change done without first running the YAML validation command above
