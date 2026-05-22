@@ -151,17 +151,17 @@ The Foundry runtime injects these automatically at container start — do not se
 - Role assignment resource names use `uuidv5("url", "${scope_id}/${discriminator}/${role_short_name}")` for determinism.
 - Configure `tfvars` in `infra/terraform/terraform.tfvars` (gitignored for sensitive values).
 
-### GitHub Actions — pinned versions
-Always use these exact major versions in workflow files. Do not downgrade.
+### GitHub Actions — minimum versions
+Use the major version tag (e.g. `@v6`) which automatically picks up the latest patch release. The table below shows the **minimum** required major version — do not use anything older. If a newer major version is available, update both the workflows and this table.
 
-| Action | Version | Notes |
-|---|---|---|
-| `actions/checkout` | `v6` | |
-| `actions/upload-artifact` | `v7` | |
-| `actions/download-artifact` | `v8` | |
-| `azure/login` | `v3` | Natively targets Node 24; `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` not needed |
-| `hashicorp/setup-terraform` | `v4` | |
-| `terraform-linters/setup-tflint` | `v6` | |
+| Action | Minimum version | Latest confirmed | Notes |
+|---|---|---|---|
+| `actions/checkout` | `v6` | v6.0.2 | |
+| `actions/upload-artifact` | `v7` | v7.0.1 | |
+| `actions/download-artifact` | `v8` | v8.0.1 | |
+| `azure/login` | `v3` | v3.0.0 | Natively targets Node 24; `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` not needed |
+| `hashicorp/setup-terraform` | `v4` | v4.0.1 | |
+| `terraform-linters/setup-tflint` | `v6` | v6.2.2 | |
 
 Do not add `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` — all actions above already target Node 24 natively.
 
