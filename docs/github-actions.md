@@ -112,6 +112,8 @@ The service principal needs the following roles. All must be assigned **at subsc
 
 Each deploy workflow follows the same pattern: download artifact → IaC deploy → push image → update agent. Logic is extracted to composite actions to avoid duplication.
 
+The `deploy-bicep` and `deploy-terraform` actions surface three of the six IaC outputs (`project_endpoint`, `acr_endpoint`, `model_deployment_name`). See [IaC outputs reference](./iac-outputs.md) for the full set and why the other three aren't surfaced here.
+
 ### Artifact flow
 
 | Artifact | Produced by | Consumed by |

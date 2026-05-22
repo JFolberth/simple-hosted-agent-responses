@@ -79,7 +79,7 @@ If `infra/terraform/backend_override.tf` exists (see [Remote state — local opt
 
 **Step 2 — Read Terraform outputs**
 
-Reads outputs via `terraform output -json`: project endpoint URL, ACR login server, and model deployment name. These values are used in every subsequent step.
+Reads outputs via `terraform output -json`: project endpoint URL, ACR login server, and model deployment name. These values are used in every subsequent step. See [IaC outputs reference](./iac-outputs.md) for the full list and which step consumes each.
 
 **Step 3 — Grant Foundry Project Manager**
 

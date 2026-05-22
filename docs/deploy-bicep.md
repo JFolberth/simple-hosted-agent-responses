@@ -67,7 +67,7 @@ Deploys `infra/bicep/main.bicep` at subscription scope using values from `main.b
 
 **Step 2 — Read deployment outputs**
 
-Retrieves outputs from the completed deployment via `az deployment sub show`: project endpoint URL, ACR login server, and model deployment name. These values are used in every subsequent step.
+Retrieves outputs from the completed deployment via `az deployment sub show`: project endpoint URL, ACR login server, and model deployment name. These values are used in every subsequent step. See [IaC outputs reference](./iac-outputs.md) for the full list and which step consumes each.
 
 **Step 3 — Grant Foundry Project Manager**
 

@@ -36,19 +36,15 @@ See the official Microsoft documentation: [What are hosted agents?](https://lear
 
 Five resources are deployed to a single resource group:
 
-| Bicep | Terraform | Resource | Why it's here | Hosted-agent-specific? |
-|---|---|---|---|---|
-| `foundry.bicep` | `modules/foundry/` | `Microsoft.CognitiveServices/accounts` (kind: `AIServices`) | AI Services account + model deployments | No |
-| `foundry-project.bicep` | `modules/foundry_project/` | `Microsoft.CognitiveServices/accounts/projects` | Foundry project + App Insights connection + **Foundry User** role for project MI on AI account | Project and App Insights connection are general purpose; **Foundry User** role is hosted-agent-specific — it grants `Microsoft.CognitiveServices/*` data actions to the container's managed identity so it can call the model endpoint at runtime |
-| `acr.bicep` | `modules/acr/` | `Microsoft.ContainerRegistry/registries` | Container image registry + AcrPull role for project MI + ACR connection to the project | The registry itself is general purpose, but the **ACR connection registered on the Foundry project** is hosted-agent-specific — it tells Foundry Agent Service which registry to pull the container image from at runtime |
-| `loganalytics.bicep` | `modules/loganalytics/` | `Microsoft.OperationalInsights/workspaces` | Log retention backend for Application Insights | No |
-| `applicationinsights.bicep` | `modules/applicationinsights/` | `Microsoft.Insights/components` | Distributed traces, metrics, and exceptions | No — prompt-based agents and evaluations also use it |
+| Bicep | Terraform | Resource | Purpose |
+|---|---|---|---|
+| `foundry.bicep` | `modules/foundry/` | `Microsoft.CognitiveServices/accounts` (kind: `AIServices`) | AI Services account + model deployments |
+| `foundry-project.bicep` | `modules/foundry_project/` | `Microsoft.CognitiveServices/accounts/projects` | Foundry project + App Insights connection + **Foundry User** role for the project MI on the AI account *(hosted-agent-specific: the role lets the container MI call the model endpoint at runtime)* |
+| `acr.bicep` | `modules/acr/` | `Microsoft.ContainerRegistry/registries` | Container image registry + AcrPull role for the project MI + **ACR connection on the Foundry project** *(hosted-agent-specific: tells the micro VM runtime which registry to pull from; project MI handles auth — no stored credentials)* |
+| `loganalytics.bicep` | `modules/loganalytics/` | `Microsoft.OperationalInsights/workspaces` | Log retention backend for Application Insights |
+| `applicationinsights.bicep` | `modules/applicationinsights/` | `Microsoft.Insights/components` | Distributed traces, metrics, and exceptions (also used by prompt-based agents and evaluations) |
 
-#### What makes this different from a standard Foundry project at the IaC level
-
-A standard Foundry project (used for prompt-based agents, evaluations, or model calls) needs only the AI Services account and a project resource. Hosted agents require one additional thing declared in this template:
-
-1. **An ACR connection on the project** — tells the micro VM runtime which container registry to pull images from. The registry itself is general purpose, but registering it as a connection on the Foundry project is specific to hosted agents. No stored credentials — the project managed identity (granted AcrPull on the registry) handles authentication.
+For what each IaC output is and where it's consumed by the deploy paths, see [IaC outputs reference](docs/iac-outputs.md).
 
 ---
 
@@ -83,19 +79,13 @@ The deploy scripts perform these operations. `azd` handles all of this automatic
 | Operation | What it does | Required role | Scope |
 |---|---|---|---|
 | `az deployment sub create` / `terraform apply` | Creates the resource group and all Azure resources | **Contributor** + **Role Based Access Control Administrator** | Subscription |
-| `az role assignment create` | Grants Azure AI Project Manager at project scope | **Role Based Access Control Administrator** | Foundry project |
+| `az role assignment create` | Grants Foundry Project Manager at project scope | **Role Based Access Control Administrator** | Foundry project |
 | `docker push` (via `az acr login`) | Pushes the container image to ACR | **AcrPush** or **Container Registry Repository Writer** | ACR resource |
-| `az rest POST .../agents/{name}/versions` | Creates the hosted agent version via the Foundry data plane | **Azure AI Project Manager** | Foundry project |
+| `az rest POST .../agents/{name}/versions` | Creates the hosted agent version via the Foundry data plane | **Foundry Project Manager** | Foundry project |
 
-> **Why assign at project scope explicitly, even with subscription-level access?**
-> The Foundry data plane evaluates `Microsoft.CognitiveServices/accounts/AIServices/agents/write` at the scope of the Foundry **project** resource specifically. Subscription or resource group scoped role assignments are not reliably inherited by the Foundry data plane. The Microsoft docs state:
->
-> > *"Foundry Project Manager at the project scope is the recommended role assignment for agent creators, as that role includes both the required data plane permissions and the ability to assign the Foundry User role."*
-> > — [Hosted agent permissions reference — Agent creation](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-permissions#agent-creation)
->
-> The deploy scripts handle this automatically (Step 3) with an idempotent `az role assignment create` followed by a 30-second propagation wait.
+> **Owner** at subscription scope satisfies all ARM operations above; the project-scope data-plane role assignment (row 2) is always made explicitly by the script regardless.
 
-If your identity has **Owner** at subscription scope it satisfies the ARM operations. The project-scope data plane assignment is always made explicitly by the script regardless.
+> **Why at project scope?** The Foundry data plane evaluates `Microsoft.CognitiveServices/accounts/AIServices/agents/write` at the **project** resource scope — subscription/RG-scoped assignments are not reliably inherited. The deploy scripts (Step 3 of both [deploy-bicep.sh](deployment/deploy-bicep.sh) and [deploy-terraform.sh](deployment/deploy-terraform.sh)) handle this with an idempotent `az role assignment create` plus a brief RBAC propagation wait. See [Hosted agent permissions — Agent creation](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-permissions#agent-creation).
 
 ---
 
@@ -146,22 +136,14 @@ After deployment, the agent is accessible through its Foundry endpoint. Open the
 You can also call it directly using `curl`. The Responses endpoint is OpenAI-compatible:
 
 ```bash
-# Non-streaming
 curl -X POST \
   "<project_endpoint>/agents/agent-framework-agent-basic-responses/endpoint/protocols/responses" \
   -H "Authorization: Bearer $(az account get-access-token --resource https://ai.azure.com --query accessToken -o tsv)" \
   -H "Content-Type: application/json" \
   -d '{"input": "Hi!"}'
-```
 
-For multi-turn conversation, include the `previous_response_id` from the prior response:
-
-```bash
-curl -X POST \
-  "<project_endpoint>/agents/agent-framework-agent-basic-responses/endpoint/protocols/responses" \
-  -H "Authorization: Bearer $(az account get-access-token --resource https://ai.azure.com --query accessToken -o tsv)" \
-  -H "Content-Type: application/json" \
-  -d '{"input": "What did I just say?", "previous_response_id": "<response_id>"}'
+# For multi-turn, add the prior response's id:
+#   -d '{"input": "What did I just say?", "previous_response_id": "<response_id>"}'
 ```
 
 ---
@@ -224,6 +206,7 @@ Detailed guides for each deployment path and the CI/CD pipeline:
 | [Deploying with Bicep](docs/deploy-bicep.md) | Shell script and azd deployment using Bicep infrastructure |
 | [Deploying with Terraform](docs/deploy-terraform.md) | Shell script and azd deployment using Terraform; includes local and remote state management |
 | [GitHub Actions CI/CD](docs/github-actions.md) | Workflow architecture, OIDC auth setup, RBAC requirements, secrets/variables reference, composite action internals |
+| [IaC outputs reference](docs/iac-outputs.md) | What each IaC output is, and where it's consumed by shell scripts, azd, and GitHub Actions |
 
 ---
 
