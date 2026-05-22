@@ -63,11 +63,19 @@ runs:
             }
           }')
 
-        RESPONSE=$(curl -s -f -X POST \
+        HTTP_STATUS=$(curl -s -o /tmp/agent_response.json \
+          -w "%{http_code}" \
+          -X POST \
           "${PROJECT_ENDPOINT}/agents/${AGENT_NAME}/versions?api-version=2025-11-15-preview" \
           -H "Authorization: Bearer ${FOUNDRY_TOKEN}" \
           -H "Content-Type: application/json" \
           -d "${AGENT_REQUEST_BODY}")
+        echo "HTTP ${HTTP_STATUS}: $(cat /tmp/agent_response.json)"
+        if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
+          echo "Error: Foundry data plane returned HTTP ${HTTP_STATUS}"
+          exit 1
+        fi
+        RESPONSE=$(cat /tmp/agent_response.json)
 
         AGENT_VERSION=$(echo "${RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
         echo "agent_version=${AGENT_VERSION}" >> "$GITHUB_OUTPUT"

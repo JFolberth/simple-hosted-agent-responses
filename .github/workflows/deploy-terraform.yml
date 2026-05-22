@@ -36,6 +36,56 @@ on:
         required: true
 
 jobs:
+  # ── Deploy infrastructure, push image, update agent ───────────────────────
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    # ARM_ env vars allow the azapi provider to authenticate via OIDC.
+    # They are inherited by all composite action steps in this job.
+    env:
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Azure login
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Terraform infrastructure
+        id: deploy-iac
+        uses: ./.github/actions/deploy-terraform
+        with:
+          environment_name: ${{ inputs.environment_name }}
+          location: ${{ inputs.location || 'swedencentral' }}
+          ai_deployments_location: ${{ inputs.ai_deployments_location || 'swedencentral' }}
+
+      - name: Push image to ACR
+        uses: ./.github/actions/push-image
+        with:
+          acr_endpoint: ${{ steps.deploy-iac.outputs.acr_endpoint }}
+          image_name: ${{ inputs.image_name }}
+          image_tag: ${{ inputs.image_tag }}
+
+      - name: Update agent
+        uses: ./.github/actions/update-agent
+        with:
+          project_endpoint: ${{ steps.deploy-iac.outputs.project_endpoint }}
+          agent_name: ${{ inputs.agent_name }}
+          image: ${{ steps.deploy-iac.outputs.acr_endpoint }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
+          model_deployment_name: ${{ steps.deploy-iac.outputs.model_deployment_name }}
+
+jobs:
   # ── Deploy Terraform infrastructure ───────────────────────────────────────────────────────
   deploy-iac:
     name: Deploy Terraform infrastructure
