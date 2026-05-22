@@ -183,7 +183,7 @@ Apply the **Don't Repeat Yourself** principle to GitHub Actions. When the same l
 **Reusable workflow conventions:**
 - Declare `on: workflow_call:` only (no `push:` / `pull_request:` triggers) for workflows that are always called from another workflow.
 - Pass secrets explicitly or via `secrets: inherit` from the calling workflow.
-- Existing reusable workflows: `build.yml`, `deploy.yml`, `deploy-bicep.yml`, `deploy-terraform.yml`.
+- Existing reusable workflows: `build.yml`, `deploy-bicep.yml`, `deploy-terraform.yml`.
 
 - Do not use `az cognitiveservices agent create` — it calls a broken start operation for hosted agents.
 - Do not build Docker images without `--platform linux/amd64` on Apple Silicon.
