@@ -140,7 +140,7 @@ jobs:
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             IMAGE_TAG="pr${{ github.event.pull_request.number }}a${{ github.run_attempt }}"
           else
-            IMAGE_TAG="latest"
+            IMAGE_TAG="${GITHUB_SHA::7}"
           fi
           docker build \
             --platform linux/amd64 \
