@@ -12,6 +12,9 @@
     "ghcr.io/devcontainers/features/terraform:1": {
       "version": "latest",
       "tflint": "latest"
+    },
+    "ghcr.io/devcontainers/features/dotnet:2": {
+      "version": "10.0"
     }
   },
   "postCreateCommand": "pip install -r src/agent-framework/responses/basic/requirements.txt && az bicep install && curl -fsSL https://aka.ms/install-azd.sh | bash && azd extension install azure.ai.agents",
