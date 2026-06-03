@@ -23,6 +23,10 @@ flowchart TD
   AB2 --> DTERR["deploy-terraform.yml (reusable)\njob: deploy"]
   AB4 --> DBICEP
   AB4 --> DTERR
+  AB --> DBSC["deploy-bicep-source-code.yml (reusable)\njob: deploy"]
+  AB2 --> DTSC["deploy-terraform-source-code.yml (reusable)\njob: deploy"]
+  AB3 --> DBSC
+  AB3 --> DTSC
 
     DBICEP --> AC1["deploy-bicep action\naz bicep install\naz deployment sub create\nread outputs"]
     DBICEP --> AC2["push-image action\ndocker load + tag + push"]
@@ -31,9 +35,18 @@ flowchart TD
     DTERR --> AC4["deploy-terraform action\nterraform init/apply\nread outputs"]
     DTERR --> AC5["push-image action"]
     DTERR --> AC6["update-agent action"]
+
+    DBSC --> AC1
+    DBSC --> AC7["update-agent-source-code action\nmultipart POST + version poll"]
+    DTSC --> AC4
+    DTSC --> AC7
 ```
 
-`deploy-bicep` and `deploy-terraform` run in parallel after `build` completes. Each is independent — you can remove either job from `ci-cd.yml` if you only need one IaC path.
+Four deploy jobs (`deploy-bicep`, `deploy-terraform`, `deploy-bicep-source-code`, `deploy-terraform-source-code`) run in parallel after `build` completes. Each is independent — you can remove any job from `ci-cd.yml` if you don't need that IaC path or deployment mode.
+
+### Agent name suffix for source-code deploys
+
+Both source-code jobs and the image-based jobs deploy into the same Foundry project. To prevent agent-name collisions, `ci-cd.yml` automatically appends `-src` to the agent name passed to the source-code workflows. With the default `vars.AGENT_NAME = agent-framework-agent-basic-responses`, the source-code agent is registered as `agent-framework-agent-basic-responses-src`. The suffix is applied in `ci-cd.yml` only; the reusable source-code workflows accept any name verbatim when invoked standalone.
 
 ## Two deployment modes: image-based vs source-code
 
@@ -239,6 +252,37 @@ env:
 
 When all four backend inputs are set, the action generates `backend_override.tf` before running `terraform init`, enabling remote state with `use_azuread_auth = true`. When any is unset, local (ephemeral) state is used.
 
+### Source-code deploy job
+
+The source-code deploy jobs follow the same pattern but swap the image steps for a source-code artifact download and the source-code update action:
+
+```yaml
+steps:
+  - uses: actions/checkout@v6
+  - uses: azure/login@v3
+    with:
+      client-id: ${{ secrets.AZURE_CLIENT_ID }}
+      tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+      subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  - uses: ./.github/actions/deploy-bicep      # or deploy-terraform
+    id: deploy-iac
+    with:
+      environment_name: ${{ inputs.environment_name }}
+      location: ${{ inputs.location }}
+  - uses: actions/download-artifact@v8
+    with:
+      name: source-code
+      path: .
+  - uses: ./.github/actions/update-agent-source-code
+    with:
+      project_endpoint: ${{ steps.deploy-iac.outputs.project_endpoint }}
+      agent_name: ${{ inputs.agent_name }}
+      model_deployment_name: ${{ steps.deploy-iac.outputs.model_deployment_name }}
+      zip_path: ./source-code.zip
+```
+
+For the full set of optional inputs (`cpu`, `memory`, `runtime`, `entry_point`, `max_polling_seconds`), see [Deploying Source Code](./deploy-source-code.md).
+
 ---
 
 ## Manual Trigger
@@ -254,23 +298,35 @@ Inputs from `workflow_dispatch` override repository variables. This is useful fo
 If you only need Bicep or Terraform, remove the unused job from `ci-cd.yml`:
 
 ```yaml
-# ci-cd.yml — remove the job you don't need
+# ci-cd.yml — remove the jobs you don't need
 jobs:
   build:
     uses: ./.github/workflows/build.yml
     secrets: inherit
 
-  deploy-bicep:            # ← remove this block to skip Bicep
+  deploy-bicep:                       # ← remove to skip image-based Bicep
     needs: build
     uses: ./.github/workflows/deploy-bicep.yml
     secrets: inherit
     with: ...
 
-  deploy-terraform:        # ← remove this block to skip Terraform
+  deploy-terraform:                   # ← remove to skip image-based Terraform
     needs: build
     uses: ./.github/workflows/deploy-terraform.yml
     secrets: inherit
     with: ...
+
+  deploy-bicep-source-code:           # ← remove to skip source-code Bicep
+    needs: build
+    uses: ./.github/workflows/deploy-bicep-source-code.yml
+    secrets: inherit
+    with: ...
+
+  deploy-terraform-source-code:       # ← remove to skip source-code Terraform
+    needs: build
+    uses: ./.github/workflows/deploy-terraform-source-code.yml
+    secrets: inherit
+    with: ...
 ```
 
-The `build.yml` workflow always runs both lint jobs and the docker build regardless of which deploy path you use.
+The `build.yml` workflow always runs both lint jobs, the docker build, and the source-code zip job regardless of which deploy paths you use.
