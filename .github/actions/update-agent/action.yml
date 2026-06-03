@@ -52,7 +52,6 @@ runs:
           --arg model          "$MODEL_DEPLOYMENT_NAME" \
           --arg image          "$IMAGE" \
           '{
-            metadata: {enableVnextExperience: "true"},
             definition: {
               kind: "hosted",
               container_protocol_versions: [{protocol: "responses", version: "1.0.0"}],
