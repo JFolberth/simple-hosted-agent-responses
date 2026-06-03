@@ -40,7 +40,7 @@ The source-code action creates a temporary metadata file because the preview API
 1. `metadata` — the agent definition JSON
 2. `code` — the raw zip payload
 
-The current action in this repo exposes `cpu`, `memory`, `runtime`, and `entry_point` as optional inputs. With the current defaults, the metadata is:
+The current action in this repo exposes `cpu`, `memory`, `runtime`, `entry_point`, and `max_polling_seconds` as optional inputs. With the current defaults, the metadata is:
 
 - `kind: hosted`
 - `protocol_versions: [{ protocol: responses, version: 1.0.0 }]`
@@ -103,8 +103,10 @@ For the current Python `remote_build` configuration, the important runtime files
 ```mermaid
 flowchart TD
     A[build.yml] --> B[source-code.zip artifact]
+    A --> X[agent-image artifact]
     B --> C[deploy-bicep-source-code.yml]
     B --> D[deploy-terraform-source-code.yml]
+    X --> Y[deploy-bicep.yml / deploy-terraform.yml<br/>image-based path]
     C --> E[deploy-bicep action]
     D --> F[deploy-terraform action]
     E --> G[update-agent-source-code action]
@@ -112,6 +114,8 @@ flowchart TD
     G --> H[POST multipart metadata + code]
     H --> I[poll version until active]
 ```
+
+The source-code deploy jobs run in parallel with the image-based deploy jobs — all four `deploy-*` jobs share the same `needs: build` dependency in `ci-cd.yml`. See [GitHub Actions CI/CD](./github-actions.md) for the full orchestration diagram.
 
 ### Step 1 — Build the source-code artifact
 
@@ -168,6 +172,8 @@ The action stops when the version reaches:
 
 ## Workflow Inputs
 
+> When invoked from `ci-cd.yml`, the `agent_name` input is automatically suffixed with `-src` (for example `agent-framework-agent-basic-responses-src`) so the source-code agent does not collide with the image-based agent deployed into the same Foundry project. When you invoke either reusable workflow directly (`workflow_dispatch` on the reusable workflow file, or `uses:` from another orchestrator), you may pass any name verbatim — the `-src` suffix is added only in `ci-cd.yml`.
+
 ### Bicep source-code workflow
 
 `.github/workflows/deploy-bicep-source-code.yml` accepts:
@@ -191,6 +197,10 @@ The action stops when the version reaches:
 | `ai_deployments_location` | AI model deployment region |
 
 The Terraform workflow also passes the optional `TF_BACKEND_*` repository variables to the Terraform composite action, exactly like the image-based deployment workflow.
+
+### How This Wires Into ci-cd.yml
+
+`ci-cd.yml` invokes both reusable source-code workflows as jobs `deploy-bicep-source-code` and `deploy-terraform-source-code`. Each has `needs: build` and runs in parallel with the image-based `deploy-bicep` and `deploy-terraform` jobs, so a single push to `main` provisions infrastructure and deploys both the container-image agent and the source-code agent into the same Foundry project. The two source-code jobs receive `agent_name` with an automatic `-src` suffix (see callout above), while `environment_name`, `location`, and `ai_deployments_location` are passed through from repository variables or `workflow_dispatch` inputs unchanged.
 
 ---
 

@@ -73,3 +73,33 @@ jobs:
       location: ${{ inputs.location || vars.AZURE_LOCATION || 'swedencentral' }}
       ai_deployments_location: ${{ inputs.ai_deployments_location || vars.AZURE_AI_DEPLOYMENTS_LOCATION || 'swedencentral' }}
     secrets: inherit
+
+  # ── Deploy — Bicep IaC + source-code upload ────────────────────────────────
+  deploy-bicep-source-code:
+    name: Deploy Source Code (Bicep)
+    needs: build
+    uses: ./.github/workflows/deploy-bicep-source-code.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      agent_name: ${{ inputs.agent_name && format('{0}-src', inputs.agent_name) || vars.AGENT_NAME && format('{0}-src', vars.AGENT_NAME) || 'agent-framework-agent-basic-responses-src' }}
+      environment_name: ${{ inputs.environment_name || vars.ENVIRONMENT_NAME }}
+      location: ${{ inputs.location || vars.AZURE_LOCATION || 'swedencentral' }}
+      ai_deployments_location: ${{ inputs.ai_deployments_location || vars.AZURE_AI_DEPLOYMENTS_LOCATION || 'swedencentral' }}
+    secrets: inherit
+
+  # ── Deploy — Terraform IaC + source-code upload ────────────────────────────
+  deploy-terraform-source-code:
+    name: Deploy Source Code (Terraform)
+    needs: build
+    uses: ./.github/workflows/deploy-terraform-source-code.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      agent_name: ${{ inputs.agent_name && format('{0}-src', inputs.agent_name) || vars.AGENT_NAME && format('{0}-src', vars.AGENT_NAME) || 'agent-framework-agent-basic-responses-src' }}
+      environment_name: ${{ inputs.environment_name || vars.ENVIRONMENT_NAME }}
+      location: ${{ inputs.location || vars.AZURE_LOCATION || 'swedencentral' }}
+      ai_deployments_location: ${{ inputs.ai_deployments_location || vars.AZURE_AI_DEPLOYMENTS_LOCATION || 'swedencentral' }}
+    secrets: inherit
