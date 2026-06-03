@@ -10,10 +10,19 @@ This guide covers the automated CI/CD pipeline for simple-hosted-agent. For loca
 flowchart TD
     P["push to main\nor workflow_dispatch"]
     P --> CICD["ci-cd.yml\n(orchestrator)"]
-    CICD --> BUILD["build.yml (reusable)\njobs: bicep-lint · terraform-plan · docker-build"]
-    BUILD --> AB["artifacts\nbicep-code · terraform-code · agent-image"]
-    AB --> DBICEP["deploy-bicep.yml (reusable)\njob: deploy"]
-    AB --> DTERR["deploy-terraform.yml (reusable)\njob: deploy"]
+  CICD --> BUILD["build.yml (reusable)"]
+  BUILD --> B1["bicep job\nlint · validate · what-if"]
+  BUILD --> B2["terraform job\nlint · plan"]
+  BUILD --> B3["source-code job\ncreate source-code.zip"]
+  BUILD --> B4["image job\ndocker build + export"]
+  B1 --> AB["artifact\nbicep-code"]
+  B2 --> AB2["artifact\nterraform-code"]
+  B3 --> AB3["artifact\nsource-code"]
+  B4 --> AB4["artifact\nagent-image"]
+  AB --> DBICEP["deploy-bicep.yml (reusable)\njob: deploy"]
+  AB2 --> DTERR["deploy-terraform.yml (reusable)\njob: deploy"]
+  AB4 --> DBICEP
+  AB4 --> DTERR
 
     DBICEP --> AC1["deploy-bicep action\naz bicep install\naz deployment sub create\nread outputs"]
     DBICEP --> AC2["push-image action\ndocker load + tag + push"]
@@ -25,6 +34,47 @@ flowchart TD
 ```
 
 `deploy-bicep` and `deploy-terraform` run in parallel after `build` completes. Each is independent — you can remove either job from `ci-cd.yml` if you only need one IaC path.
+
+## Two deployment modes: image-based vs source-code
+
+This repository currently supports two different hosted-agent deployment paths, and they are not interchangeable.
+
+| Mode | What gets uploaded | REST shape | Typical use |
+|---|---|---|---|
+| Image-based | A container image from ACR | JSON POST to `/agents/{name}/versions?api-version=2025-11-15-preview` | Production-style container deployment with a Dockerfile |
+| Source-code | A flat `.zip` of app source plus metadata | Multipart `multipart/form-data` POST to `/agents?api-version=2025-11-15-preview` | Preview source-code deployment demo and rapid iteration |
+
+### Why the source-code path is different
+
+The source-code path uses the preview REST contract documented by Microsoft at https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent-code?tabs=bash. It sends two parts in one request:
+
+1. `metadata` — the JSON agent definition (`kind`, `protocol_versions`, `code_configuration`, `environment_variables`)
+2. `code` — the raw `.zip` bytes
+
+That is why the source-code action creates a temporary metadata file before calling `curl`. The image-based path does not need that extra form part because its JSON body already contains the full definition for the container image deployment.
+
+### Image-based vs source-code API shape
+
+The two update actions are intentionally different because they target different API contracts.
+
+| Action | Request target | Payload shape | Why it differs |
+|---|---|---|---|
+| `update-agent` | `/agents/{name}/versions?api-version=2025-11-15-preview` | Single JSON body | The image-based contract accepts the full hosted-agent definition inline, including image reference, CPU, memory, and environment variables. |
+| `update-agent-source-code` | `/agents?api-version=2025-11-15-preview` on create, then version polling | Multipart form upload | The source-code contract requires a separate `metadata` JSON part and `code` zip part, plus zip-specific preview headers. |
+
+The source-code path also uses the preview feature headers:
+
+- `Foundry-Features: CodeAgents=V1Preview,HostedAgents=V1Preview`
+- `x-ms-code-zip-sha256: <sha256-of-zip>`
+- `x-ms-agent-name: <agent-name>` on create
+
+These are part of the REST contract for the preview source-code deployment flow.
+
+### When to use each method
+
+- Use the image-based path when you already have a Dockerfile, need full runtime control, or want the container workflow used by the local Bicep and Terraform deploy scripts.
+- Use the source-code path when you want the new preview ZIP-based deployment flow, smaller upload payloads, or fast demo iteration without building and pushing an image.
+- Treat `code_configuration` and the image/container definition as mutually exclusive for a given hosted-agent version. They are different deployment modes, not interchangeable fields on the same request.
 
 ---
 
@@ -120,7 +170,8 @@ The `deploy-bicep` and `deploy-terraform` actions surface three of the six IaC o
 |---|---|---|
 | `bicep-code` | `build.yml` (bicep-lint job) | `deploy-bicep` action |
 | `terraform-code` | `build.yml` (terraform-plan job) | `deploy-terraform` action |
-| `agent-image` | `build.yml` (docker-build job) | `push-image` action |
+| `agent-image` | `build.yml` (image job) | `push-image` action |
+| `source-code` | `build.yml` (source-code job) | `update-agent-source-code` action |
 
 ### Composite actions
 
@@ -129,7 +180,8 @@ The `deploy-bicep` and `deploy-terraform` actions surface three of the six IaC o
 | `deploy-bicep` | [.github/actions/deploy-bicep/action.yml](../.github/actions/deploy-bicep/action.yml) | Downloads `bicep-code`, installs Bicep CLI, runs `az deployment sub create`, reads outputs |
 | `deploy-terraform` | [.github/actions/deploy-terraform/action.yml](../.github/actions/deploy-terraform/action.yml) | Downloads `terraform-code`, optionally generates `backend_override.tf`, runs `terraform init/apply`, reads outputs |
 | `push-image` | [.github/actions/push-image/action.yml](../.github/actions/push-image/action.yml) | Downloads `agent-image` tarball, `docker load`, `az acr login`, `docker tag/push` |
-| `update-agent` | [.github/actions/update-agent/action.yml](../.github/actions/update-agent/action.yml) | POSTs to Foundry data plane; captures HTTP status and error body separately for visible diagnostics |
+| `update-agent` | [.github/actions/update-agent/action.yml](../.github/actions/update-agent/action.yml) | POSTs the container-based hosted-agent definition to the Foundry data plane |
+| `update-agent-source-code` | [.github/actions/update-agent-source-code/action.yml](../.github/actions/update-agent-source-code/action.yml) | Uploads a `.zip` plus multipart metadata for the preview source-code hosted-agent path |
 
 ### Bicep deploy job
 

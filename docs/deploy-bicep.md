@@ -93,6 +93,8 @@ POST {projectEndpoint}/agents/{name}/versions?api-version=2025-11-15-preview
 
 The request body specifies `kind: hosted`, the container image reference, CPU/memory allocation (`0.25` CPU, `0.5Gi`), the Responses protocol version (`1.0.0`), and the `AZURE_AI_MODEL_DEPLOYMENT_NAME` environment variable. The platform pulls the image and provisions a micro VM automatically.
 
+For the preview ZIP-based source-code deployment mode, see [GitHub Actions CI/CD](./github-actions.md). That path uses a different multipart REST contract and is documented there to keep this local Bicep guide focused on the shell-script image workflow.
+
 > **Auth:** The script acquires a token scoped to `https://ai.azure.com/` via `az account get-access-token`. `az rest` is **not** used — it does not reliably acquire the correct audience token for this endpoint.
 >
 > `metadata.enableVnextExperience: "true"` is a required server-side field. Omitting it causes a silent failure.

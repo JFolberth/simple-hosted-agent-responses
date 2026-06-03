@@ -1,0 +1,155 @@
+name: Update Foundry Agent Version (Source Code)
+description: Creates or updates a hosted agent from a source-code zip via the Foundry data plane REST API preview endpoint.
+
+inputs:
+  project_endpoint:
+    description: Foundry project endpoint URL
+    required: true
+  agent_name:
+    description: Name of the hosted agent
+    required: true
+  source_code_zip:
+    description: Path to the local source-code zip artifact
+    required: true
+  model_deployment_name:
+    description: Name of the AI model deployment
+    required: true
+  cpu:
+    description: CPU allocation for the hosted agent container
+    required: false
+    default: '0.25'
+  memory:
+    description: Memory allocation for the hosted agent container
+    required: false
+    default: '0.5Gi'
+  runtime:
+    description: Source-code runtime for the hosted agent
+    required: false
+    default: 'python_3_13'
+  entry_point:
+    description: Source-code entry point command for the hosted agent
+    required: false
+    default: '["python", "main.py"]'
+  max_polling_seconds:
+    description: Maximum time to wait for the source-code deployment to reach active status
+    required: false
+    default: '600'
+
+outputs:
+  agent_version:
+    description: Version ID returned by the Foundry data plane
+    value: ${{ steps.post.outputs.agent_version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Create source-code metadata
+      id: metadata
+      shell: bash
+      env:
+        AGENT_NAME: ${{ inputs.agent_name }}
+        MODEL_DEPLOYMENT_NAME: ${{ inputs.model_deployment_name }}
+        CPU: ${{ inputs.cpu }}
+        MEMORY: ${{ inputs.memory }}
+        RUNTIME: ${{ inputs.runtime }}
+        ENTRY_POINT: ${{ inputs.entry_point }}
+      run: |
+        METADATA_FILE=$(mktemp)
+        ENTRY_POINT_JSON=$(python3 -c 'import json,sys; print(json.dumps(json.loads(sys.argv[1])))' "$ENTRY_POINT")
+        jq -n \
+          --arg model "$MODEL_DEPLOYMENT_NAME" \
+          --arg cpu "$CPU" \
+          --arg memory "$MEMORY" \
+          --arg runtime "$RUNTIME" \
+          --argjson entry_point "$ENTRY_POINT_JSON" \
+          '{
+            description: "Hosted agent deployed from source code",
+            definition: {
+              kind: "hosted",
+              protocol_versions: [{protocol: "responses", version: "1.0.0"}],
+              cpu: $cpu,
+              memory: $memory,
+              code_configuration: {
+                runtime: $runtime,
+                entry_point: $entry_point,
+                dependency_resolution: "remote_build"
+              },
+              environment_variables: {AZURE_AI_MODEL_DEPLOYMENT_NAME: $model}
+            }
+          }' > "$METADATA_FILE"
+        echo "metadata_file=${METADATA_FILE}" >> "$GITHUB_OUTPUT"
+        echo "Metadata file created at ${METADATA_FILE}"
+
+    - name: Post source-code agent deployment to Foundry data plane
+      id: post
+      shell: bash
+      env:
+        PROJECT_ENDPOINT: ${{ inputs.project_endpoint }}
+        AGENT_NAME: ${{ inputs.agent_name }}
+        SOURCE_CODE_ZIP: ${{ inputs.source_code_zip }}
+        METADATA_FILE: ${{ steps.metadata.outputs.metadata_file }}
+        MAX_POLLING_SECONDS: ${{ inputs.max_polling_seconds }}
+      run: |
+        if [[ ! -f "$SOURCE_CODE_ZIP" ]]; then
+          echo "Error: Source code zip not found at ${SOURCE_CODE_ZIP}"
+          exit 1
+        fi
+
+        CODE_ZIP_SHA256=$(sha256sum "$SOURCE_CODE_ZIP" | awk '{print $1}')
+        echo "Source code SHA256: ${CODE_ZIP_SHA256}"
+
+        FOUNDRY_TOKEN=$(az account get-access-token \
+          --resource "https://ai.azure.com/" \
+          --query accessToken -o tsv)
+
+        HTTP_STATUS=$(curl -s -o /tmp/source_code_response.json \
+          -w "%{http_code}" \
+          -X POST \
+          "${PROJECT_ENDPOINT}/agents?api-version=2025-11-15-preview" \
+          -H "Authorization: Bearer ${FOUNDRY_TOKEN}" \
+          -H "Accept: application/json" \
+          -H "Foundry-Features: CodeAgents=V1Preview,HostedAgents=V1Preview" \
+          -H "x-ms-agent-name: ${AGENT_NAME}" \
+          -H "x-ms-code-zip-sha256: ${CODE_ZIP_SHA256}" \
+          -F "metadata=@${METADATA_FILE};type=application/json" \
+          -F "code=@${SOURCE_CODE_ZIP};type=application/zip;filename=${AGENT_NAME}.zip")
+
+        echo "HTTP ${HTTP_STATUS}: $(cat /tmp/source_code_response.json)"
+        if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
+          echo "Error: Foundry data plane returned HTTP ${HTTP_STATUS}"
+          exit 1
+        fi
+
+        RESPONSE=$(cat /tmp/source_code_response.json)
+        AGENT_VERSION=$(echo "$RESPONSE" | python3 -c 'import sys,json; data=json.load(sys.stdin); print(data.get("versions", {}).get("latest", data.get("version", 1)))')
+        echo "agent_version=${AGENT_VERSION}" >> "$GITHUB_OUTPUT"
+        echo "Agent version resolved as ${AGENT_VERSION}"
+
+        START_TIME=$(date +%s)
+        while true; do
+          ELAPSED=$(($(date +%s) - START_TIME))
+          if [[ $ELAPSED -gt $MAX_POLLING_SECONDS ]]; then
+            echo "Error: Agent version did not reach active state within ${MAX_POLLING_SECONDS} seconds"
+            exit 1
+          fi
+
+          VERSION_STATUS=$(curl -s \
+            -X GET \
+            "${PROJECT_ENDPOINT}/agents/${AGENT_NAME}/versions/${AGENT_VERSION}?api-version=2025-11-15-preview" \
+            -H "Authorization: Bearer ${FOUNDRY_TOKEN}" \
+            -H "Accept: application/json" \
+            -H "Foundry-Features: CodeAgents=V1Preview,HostedAgents=V1Preview" \
+            | python3 -c 'import sys,json; data=json.load(sys.stdin); print(data.get("status", "unknown"))' 2>/dev/null)
+
+          echo "Current status: ${VERSION_STATUS} (elapsed ${ELAPSED}s)"
+          if [[ "$VERSION_STATUS" == "active" ]]; then
+            echo "Agent version ${AGENT_VERSION} is active"
+            break
+          fi
+          if [[ "$VERSION_STATUS" == "failed" ]]; then
+            echo "Error: Agent version reached failed status"
+            exit 1
+          fi
+
+          sleep 5
+        done

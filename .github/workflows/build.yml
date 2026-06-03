@@ -121,7 +121,27 @@ jobs:
         working-directory: infra/terraform
         run: terraform plan -input=false -var-file=terraform.tfvars
 
-  # ── Build & export Docker image ─────────────────────────────────────────────
+  # ── Build source-code artifact and Docker image in parallel ───────────────
+  source-code:
+    name: Build source-code artifact
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Create source-code zip artifact
+        run: |
+          git archive --format=zip --output=source-code.zip HEAD:src/agent-framework/responses/basic
+
+      - name: Upload source-code artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: source-code
+          path: source-code.zip
+
   image:
     name: Build & export Docker image
     runs-on: ubuntu-latest
