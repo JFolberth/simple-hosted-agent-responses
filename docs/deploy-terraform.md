@@ -87,6 +87,8 @@ Identical to the Bicep script. See [Bicep — Step 3](./deploy-bicep.md#step-3--
 
 **Steps 4, 5, 6** — Identical to the Bicep script: ACR login, `docker build --platform linux/amd64` + push, Foundry data plane POST.
 
+For the preview ZIP-based source-code deployment mode, see [GitHub Actions CI/CD](./github-actions.md). That path uses a different multipart REST contract and is documented there to keep this local Terraform guide focused on the shell-script image workflow.
+
 ---
 
 ## Azure Developer CLI (azd)

@@ -229,6 +229,7 @@ Detailed guides for each deployment path and the CI/CD pipeline:
 |---|---|
 | [Deploying with Bicep](docs/deploy-bicep.md) | Shell script and azd deployment using Bicep infrastructure |
 | [Deploying with Terraform](docs/deploy-terraform.md) | Shell script and azd deployment using Terraform; includes local and remote state management |
+| [Deploying Source Code](docs/deploy-source-code.md) | ZIP-based hosted-agent deployment using the repository's GitHub Actions workflows |
 | [GitHub Actions CI/CD](docs/github-actions.md) | Workflow architecture, OIDC auth setup, RBAC requirements, secrets/variables reference, composite action internals |
 | [IaC outputs reference](docs/iac-outputs.md) | What each IaC output is, and where it's consumed by shell scripts, azd, and GitHub Actions |
 
