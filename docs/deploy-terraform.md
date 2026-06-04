@@ -48,7 +48,7 @@ Also edit the configuration block at the top of `deployment/deploy-terraform.sh`
 
 ```bash
 AGENT_NAME="agent-framework-agent-basic-responses-tf"  # Name for the hosted agent in Foundry
-IMAGE_NAME="agent-framework-basic-responses"            # Container image name (without registry/tag)
+IMAGE_NAME="agent-framework-agent-basic-responses"      # Container image name (without registry/tag)
 ```
 
 ---
