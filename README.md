@@ -116,11 +116,15 @@ See [Deploying with Bicep](docs/deploy-bicep.md#azure-developer-cli-azd) or [Dep
 ### Shell scripts
 
 ```bash
-./deployment/deploy-bicep.sh          # Full deploy (Bicep)
-./deployment/deploy-terraform.sh      # Full deploy (Terraform)
+./deployment/deploy-bicep.sh          # Full deploy (Bicep): image + source-code agents
+./deployment/deploy-terraform.sh      # Full deploy (Terraform): image + source-code agents
 
-./deployment/deploy-bicep.sh --skip-infra      # Code changes only
-./deployment/deploy-terraform.sh --skip-infra  # Code changes only
+./deployment/deploy-bicep.sh --skip-infra      # Code changes only, both agents
+./deployment/deploy-terraform.sh --skip-infra  # Code changes only, both agents
+
+./deployment/deploy-bicep.sh --no-image-agent        # Source-code agent only, no Docker
+./deployment/deploy-bicep.sh --no-source-code-agent  # Image-based agent only
+./deployment/deploy-bicep.sh --skip-rbac             # Skip RBAC grant + 120s wait when already assigned
 ```
 
 See [Deploying with Bicep](docs/deploy-bicep.md) or [Deploying with Terraform](docs/deploy-terraform.md) for configuration, step-by-step walkthrough, and state management.
@@ -164,11 +168,13 @@ Save the file, then redeploy the code without re-running infrastructure:
 
 ```bash
 ./deployment/deploy-bicep.sh --skip-infra      # or deploy-terraform.sh --skip-infra
+# For a faster source-code-only loop with no Docker build:
+./deployment/deploy-bicep.sh --skip-infra --skip-rbac --no-image-agent
 # or, with azd:
 azd deploy
 ```
 
-The script rebuilds the container image, pushes it to ACR, and creates a new agent version pointing at the updated image. For more substantial changes — adding tools, swapping the model client, or switching protocols — see the [Agent Framework documentation](https://github.com/microsoft/agent-framework).
+By default, the script creates both a new image-based version and a new source-code version. Passing `--no-image-agent` skips Docker and lets Foundry build from the uploaded source-code zip. For more substantial changes — adding tools, swapping the model client, or switching protocols — see the [Agent Framework documentation](https://github.com/microsoft/agent-framework).
 
 ---
 

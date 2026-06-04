@@ -10,7 +10,7 @@ This guide covers local deployment of the simple-hosted-agent using Terraform (a
 |---|---|
 | [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) | Required for all paths. Run `az login` before deploying. |
 | [Terraform](https://developer.hashicorp.com/terraform/install) | Version ≥ 1.9. `brew install hashicorp/tap/terraform` / [installer](https://developer.hashicorp.com/terraform/install). |
-| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Required to build and push the container image. |
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Required when deploying the image-based agent. Not required for source-code-only deploys. |
 
 All prerequisites are pre-installed in the dev container.
 
@@ -55,19 +55,38 @@ IMAGE_NAME="agent-framework-agent-basic-responses"      # Container image name (
 
 ## Shell Script
 
-`deployment/deploy-terraform.sh` runs the full deployment from your local machine in six steps.
+`deployment/deploy-terraform.sh` runs the full deployment from your local machine in seven steps. By default, it deploys both the image-based agent and the source-code agent.
 
 ### Usage
 
 ```bash
-# Full deploy — infrastructure + image + agent
+# Full deploy — infrastructure + image-based agent + source-code agent
 ./deployment/deploy-terraform.sh
 
-# Code-only update — skip infrastructure, just rebuild image + update agent
+# Code-only update — skip infrastructure, update both agents
 ./deployment/deploy-terraform.sh --skip-infra
+
+# Only the image-based agent
+./deployment/deploy-terraform.sh --no-source-code-agent
+
+# Only the source-code agent — skips Docker entirely
+./deployment/deploy-terraform.sh --no-image-agent
+
+# Skip the Foundry Project Manager grant and 120s RBAC wait
+./deployment/deploy-terraform.sh --skip-rbac
 ```
 
 > Run from anywhere in the repo. The script resolves the repo root from its own location.
+
+### Flags and environment variables
+
+| Flag | Environment variable | Default | Effect |
+|---|---|---|---|
+| `--no-image-agent` | `IMAGE_BASED_AGENT=false` | `true` | Skip ACR login, Docker build/push, and image-based agent version creation |
+| `--no-source-code-agent` | `SOURCE_CODE_BASED_AGENT=false` | `true` | Skip source-code zip creation, multipart upload, and remote-build polling |
+| `--skip-rbac` | `SKIP_RBAC=true` | `false` | Skip the Foundry Project Manager role assignment and the 120-second RBAC propagation wait |
+
+CLI flags override the default values. The script exits before deployment if both agent modes resolve to `false`.
 
 ### What each step does
 
@@ -85,9 +104,23 @@ Reads outputs via `terraform output -json`: project endpoint URL, ACR login serv
 
 Identical to the Bicep script. See [Bicep — Step 3](./deploy-bicep.md#step-3--grant-foundry-project-manager) for the full explanation.
 
-**Steps 4, 5, 6** — Identical to the Bicep script: ACR login, `docker build --platform linux/amd64` + push, Foundry data plane POST.
+Pass `--skip-rbac` or set `SKIP_RBAC=true` if the role is already assigned and you want to skip the 120-second wait while iterating.
 
-For the preview ZIP-based source-code deployment mode, see [GitHub Actions CI/CD](./github-actions.md). That path uses a different multipart REST contract and is documented there to keep this local Terraform guide focused on the shell-script image workflow.
+**Steps 4, 5, 6** — Image-based deployment, identical to the Bicep script: ACR login, `docker build --platform linux/amd64` + push, Foundry data plane POST.
+
+**Step 7 — Create source-code agent version**
+
+When `SOURCE_CODE_BASED_AGENT=true`, the script creates a flat zip from `src/agent-framework/responses/basic/` using `git archive`, computes its SHA-256 hash, writes a metadata JSON file, and uploads both parts with a multipart request:
+
+```text
+POST {projectEndpoint}/agents/{sourceCodeAgentName}/versions?api-version=2025-11-15-preview
+```
+
+The source-code agent name is `${AGENT_NAME}-src`, so it can coexist with the image-based agent in the same project. The `/versions` endpoint auto-creates the agent if it does not exist and creates a new version if it does.
+
+The source-code metadata uses `protocol_versions` and `code_configuration` with `dependency_resolution: remote_build`; Foundry builds the runtime container remotely. After the POST returns, the script polls the new version until it reaches `active`, `failed`, or the timeout (`SOURCE_CODE_MAX_POLLING_SECONDS`, default `600`).
+
+> Source-code deployments use `protocol_versions`. Image-based deployments use `container_protocol_versions`. These field names are not interchangeable.
 
 ---
 

@@ -18,8 +18,8 @@ A minimal reference for deploying a Python AI agent to Azure AI Foundry Hosted A
 | `infra/terraform/modules/loganalytics/` | Log Analytics workspace (Terraform) |
 | `infra/terraform/modules/applicationinsights/` | Application Insights component (Terraform) |
 | `infra/terraform/modules/foundry_project_connection/` | Reusable Terraform module for Foundry project connections |
-| `deployment/deploy-bicep.sh` | Single-script deploy (Bicep): infra → image → agent |
-| `deployment/deploy-terraform.sh` | Single-script deploy (Terraform): infra → image → agent |
+| `deployment/deploy-bicep.sh` | Single-script deploy (Bicep): infra → image-based agent + source-code agent |
+| `deployment/deploy-terraform.sh` | Single-script deploy (Terraform): infra → image-based agent + source-code agent |
 | `deployment/azd-select.sh` | Interactive prompt — copies `azure-bicep.yaml` or `azure-terraform.yaml` to `deployment/azure.yaml` |
 | `deployment/azure-bicep.yaml` | azd config for Bicep (`infra.provider: bicep`, points to `deployment/infra-azd/`) |
 | `deployment/azure-terraform.yaml` | azd config for Terraform (`infra.provider: terraform`, points to `infra/terraform/`) |
@@ -36,17 +36,23 @@ The **Foundry data plane** (`POST {projectEndpoint}/agents/{name}/versions?api-v
 
 ```bash
 # Bicep
-./deployment/deploy-bicep.sh             # Full deploy (infra + image + agent)
-./deployment/deploy-bicep.sh --skip-infra  # Code change only
+./deployment/deploy-bicep.sh                         # Full deploy (infra + image + source-code agents)
+./deployment/deploy-bicep.sh --skip-infra            # Code change only, both agents
+./deployment/deploy-bicep.sh --no-image-agent        # Source-code agent only
+./deployment/deploy-bicep.sh --no-source-code-agent  # Image-based agent only
+./deployment/deploy-bicep.sh --skip-rbac             # Skip RBAC grant + 120s wait
 
 # Terraform
-./deployment/deploy-terraform.sh             # Full deploy
-./deployment/deploy-terraform.sh --skip-infra  # Code change only
+./deployment/deploy-terraform.sh                         # Full deploy (infra + image + source-code agents)
+./deployment/deploy-terraform.sh --skip-infra            # Code change only, both agents
+./deployment/deploy-terraform.sh --no-image-agent        # Source-code agent only
+./deployment/deploy-terraform.sh --no-source-code-agent  # Image-based agent only
+./deployment/deploy-terraform.sh --skip-rbac             # Skip RBAC grant + 120s wait
 ```
 
-Prerequisites: `az login`, Docker daemon running. Terraform also requires `terraform >= 1.9` in PATH.
+Prerequisites: `az login`, `git`, `curl`, `python3`. Docker daemon is required only when `IMAGE_BASED_AGENT=true`. Terraform also requires `terraform >= 1.9` in PATH.
 
-> **Sync rule:** `deploy-bicep.sh` and `deploy-terraform.sh` share the same post-infra flow (Steps 2–6: read outputs → assign Project Manager → Docker login → build/push image → create agent version). Only Step 1 (infra provisioning) differs between them. Any change made to the shared steps in one script **must be reconciled in the other**.
+> **Sync rule:** `deploy-bicep.sh` and `deploy-terraform.sh` share the same post-infra flow (Steps 2–7: read outputs → optionally assign Project Manager → image-based agent (Docker login → build/push image → POST image agent version) → source-code agent (zip + multipart POST to `/agents/{name}/versions` + poll)). Both image and source-code steps are gated by `IMAGE_BASED_AGENT` / `SOURCE_CODE_BASED_AGENT` env flags (default `true` for both), with negative-only CLI flags `--no-image-agent` / `--no-source-code-agent`; at least one agent mode must remain enabled. `SKIP_RBAC=true` or `--skip-rbac` skips the role assignment and 120-second wait. Only Step 1 (infra provisioning) differs between the two scripts. Any change made to the shared steps in one script **must be reconciled in the other**.
 
 ### azd
 
@@ -106,7 +112,7 @@ Terraform uses the **`Azure/azapi`** provider (`~> 2.0`) with `hashicorp/random`
 ### Docker platform
 Always build with `--platform linux/amd64`. Foundry runtime does not support arm64; building on Apple Silicon without this flag produces a platform mismatch error in the portal.
 
-### Foundry data plane call
+### Foundry data plane call — image-based
 Required fields in the request body:
 ```json
 {
@@ -122,6 +128,29 @@ Required fields in the request body:
 }
 ```
 `metadata.enableVnextExperience: "true"` is a hard server-side requirement — omitting it causes a silent failure. Auth scope: `https://ai.azure.com/` (not `cognitiveservices.azure.com`). Use `az account get-access-token --resource "https://ai.azure.com/"` + `curl` for the POST — `az rest --resource "https://ai.azure.com/"` does not reliably acquire the correct audience token for this endpoint.
+
+### Foundry data plane call — source-code
+Source-code deployments also POST to `POST {projectEndpoint}/agents/{name}/versions?api-version=2025-11-15-preview`, but the payload is multipart form data with a `metadata` JSON part and a `code` zip part. The `/versions` endpoint auto-creates the agent if missing and creates a new version if it exists. Required source-code metadata uses `protocol_versions` (not `container_protocol_versions`) plus `code_configuration`:
+
+```json
+{
+  "metadata": {"enableVnextExperience": "true"},
+  "definition": {
+    "kind": "hosted",
+    "protocol_versions": [{"protocol": "responses", "version": "1.0.0"}],
+    "cpu": "0.25",
+    "memory": "0.5Gi",
+    "environment_variables": {"AZURE_AI_MODEL_DEPLOYMENT_NAME": "<model>"},
+    "code_configuration": {
+      "runtime": "python_3_13",
+      "entry_point": ["python", "main.py"],
+      "dependency_resolution": "remote_build"
+    }
+  }
+}
+```
+
+Required headers: `Foundry-Features: CodeAgents=V1Preview,HostedAgents=V1Preview`, `x-ms-agent-name`, and `x-ms-code-zip-sha256`.
 
 ### Responses protocol
 The agent uses `ResponsesHostServer` on port 8088. The `@app.response_handler` receives the request; conversation history is managed automatically by the platform via `previous_response_id`. There is no in-memory session store required.
@@ -195,7 +224,7 @@ Apply the **Don't Repeat Yourself** principle to GitHub Actions. When the same l
 - Do not place an `azure.yaml` at the repo root — azd must be run from `deployment/` where it finds the generated `azure.yaml`.
 - Do not commit `deployment/azure.yaml` — it is gitignored and generated locally by `deployment/azd-select.sh`.
 - Do not modify `infra/` or `src/` to accommodate azd — the `deployment/infra-azd/` shim and `deployment/azure-*.yaml` files are the only azd-specific additions.
-- Do not change the shared post-infra steps (Steps 2–6: read outputs, RBAC, Docker login, build/push image, create agent version) in `deploy-bicep.sh` without making the equivalent change in `deploy-terraform.sh`, and vice versa. Only Step 1 (infrastructure provisioning) intentionally differs between the two scripts.
+- Do not change the shared post-infra steps (Steps 2–7: read outputs, optional RBAC, image-based agent, source-code agent) in `deploy-bicep.sh` without making the equivalent change in `deploy-terraform.sh`, and vice versa. Only Step 1 (infrastructure provisioning) intentionally differs between the two scripts.
 - Do not duplicate steps across workflows — extract shared steps to a composite action in `.github/actions/`. See the DRY pattern section above.
 - Do not declare a workflow change done without running the YAML validation command below and confirming all files print `OK`. Use a duplicate-key-aware loader — `yaml.safe_load` silently ignores duplicate keys but GitHub's parser rejects them:
   ```bash

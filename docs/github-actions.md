@@ -48,7 +48,7 @@ This repository currently supports two different hosted-agent deployment paths, 
 | Mode | What gets uploaded | REST shape | Typical use |
 |---|---|---|---|
 | Image-based | A container image from ACR | JSON POST to `/agents/{name}/versions?api-version=2025-11-15-preview` | Production-style container deployment with a Dockerfile |
-| Source-code | A flat `.zip` of app source plus metadata | Multipart `multipart/form-data` POST to `/agents?api-version=2025-11-15-preview` | Preview source-code deployment demo and rapid iteration |
+| Source-code | A flat `.zip` of app source plus metadata | Multipart `multipart/form-data` POST to `/agents/{name}/versions?api-version=2025-11-15-preview` | Preview source-code deployment demo and rapid iteration |
 
 ### Why the source-code path is different
 
@@ -66,13 +66,15 @@ The two update actions are intentionally different because they target different
 | Action | Request target | Payload shape | Why it differs |
 |---|---|---|---|
 | `update-agent` | `/agents/{name}/versions?api-version=2025-11-15-preview` | Single JSON body | The image-based contract accepts the full hosted-agent definition inline, including image reference, CPU, memory, and environment variables. |
-| `update-agent-source-code` | `/agents?api-version=2025-11-15-preview` on create, then version polling | Multipart form upload | The source-code contract requires a separate `metadata` JSON part and `code` zip part, plus zip-specific preview headers. |
+| `update-agent-source-code` | `/agents/{name}/versions?api-version=2025-11-15-preview`, then version polling | Multipart form upload | The source-code contract requires a separate `metadata` JSON part and `code` zip part, plus zip-specific preview headers. |
+
+The `/versions` endpoint auto-creates the source-code agent when it is missing and adds a new version when it already exists. This keeps create and update behavior aligned with the image-based `update-agent` action.
 
 The source-code path also uses the preview feature headers:
 
 - `Foundry-Features: CodeAgents=V1Preview,HostedAgents=V1Preview`
 - `x-ms-code-zip-sha256: <sha256-of-zip>`
-- `x-ms-agent-name: <agent-name>` on create
+- `x-ms-agent-name: <agent-name>`
 
 These are part of the REST contract for the preview source-code deployment flow.
 

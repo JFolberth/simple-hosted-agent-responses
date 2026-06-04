@@ -9,7 +9,7 @@ This guide covers local deployment of the simple-hosted-agent using Bicep infras
 | Tool | Notes |
 |---|---|
 | [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) | Required for all paths. Run `az login` before deploying. |
-| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Required to build and push the container image. |
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Required when deploying the image-based agent. Not required for source-code-only deploys. |
 | Bicep CLI | Installed automatically by the deploy script (`az bicep install`). No manual install needed. |
 
 All prerequisites are pre-installed in the dev container.
@@ -35,8 +35,8 @@ param aiFoundryProjectName  = 'ai-project'                 // Foundry project na
 Also edit the configuration block at the top of `deployment/deploy-bicep.sh` to match:
 
 ```bash
-ENVIRONMENT_NAME="simple-hosted-agent3"             # Set to the same value as environmentName in main.bicepparam
-LOCATION="eastus"                                   # Set to the same value as location in main.bicepparam
+ENVIRONMENT_NAME="simple-hosted-agent-bicep"        # Set to the same value as environmentName in main.bicepparam
+LOCATION="swedencentral"                            # Set to the same value as location in main.bicepparam
 AGENT_NAME="agent-framework-agent-basic-responses"  # Name for the hosted agent in Foundry
 IMAGE_NAME="agent-framework-agent-basic-responses"  # Container image name (without registry/tag)
 ```
@@ -45,19 +45,38 @@ IMAGE_NAME="agent-framework-agent-basic-responses"  # Container image name (with
 
 ## Shell Script
 
-`deployment/deploy-bicep.sh` runs the full deployment from your local machine in six steps.
+`deployment/deploy-bicep.sh` runs the full deployment from your local machine in seven steps. By default, it deploys both the image-based agent and the source-code agent.
 
 ### Usage
 
 ```bash
-# Full deploy — infrastructure + image + agent
+# Full deploy — infrastructure + image-based agent + source-code agent
 ./deployment/deploy-bicep.sh
 
-# Code-only update — skip infrastructure, just rebuild image + update agent
+# Code-only update — skip infrastructure, update both agents
 ./deployment/deploy-bicep.sh --skip-infra
+
+# Only the image-based agent
+./deployment/deploy-bicep.sh --no-source-code-agent
+
+# Only the source-code agent — skips Docker entirely
+./deployment/deploy-bicep.sh --no-image-agent
+
+# Skip the Foundry Project Manager grant and 120s RBAC wait
+./deployment/deploy-bicep.sh --skip-rbac
 ```
 
 > Run from anywhere in the repo. The script resolves the repo root from its own location.
+
+### Flags and environment variables
+
+| Flag | Environment variable | Default | Effect |
+|---|---|---|---|
+| `--no-image-agent` | `IMAGE_BASED_AGENT=false` | `true` | Skip ACR login, Docker build/push, and image-based agent version creation |
+| `--no-source-code-agent` | `SOURCE_CODE_BASED_AGENT=false` | `true` | Skip source-code zip creation, multipart upload, and remote-build polling |
+| `--skip-rbac` | `SKIP_RBAC=true` | `false` | Skip the Foundry Project Manager role assignment and the 120-second RBAC propagation wait |
+
+CLI flags override the default values. The script exits before deployment if both agent modes resolve to `false`.
 
 ### What each step does
 
@@ -75,6 +94,8 @@ Assigns the **Foundry Project Manager** role (`eadc314b-1a2d-4efa-be10-5d325db50
 
 > The Foundry data plane evaluates this permission at **project scope** specifically. Subscription or resource group scoped assignments are not reliably inherited. See [Hosted agent permissions — agent creation](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-permissions#agent-creation).
 
+If you already granted the role and are iterating locally, pass `--skip-rbac` or set `SKIP_RBAC=true` to skip the role assignment and wait.
+
 **Step 4 — Authenticate to ACR**
 
 Runs `az acr login` against the project's container registry so Docker can push images.
@@ -83,7 +104,7 @@ Runs `az acr login` against the project's container registry so Docker can push 
 
 Builds the agent container image from `src/agent-framework/responses/basic/` with `--platform linux/amd64` (required — the Foundry runtime does not support arm64) and pushes it to ACR. The image tag is the short git SHA (`git rev-parse --short HEAD`), or a UTC timestamp if git is unavailable.
 
-**Step 6 — Create agent version**
+**Step 6 — Create image-based agent version**
 
 POSTs to the Foundry data plane to register a new hosted agent version:
 
@@ -93,13 +114,25 @@ POST {projectEndpoint}/agents/{name}/versions?api-version=2025-11-15-preview
 
 The request body specifies `kind: hosted`, the container image reference, CPU/memory allocation (`0.25` CPU, `0.5Gi`), the Responses protocol version (`1.0.0`), and the `AZURE_AI_MODEL_DEPLOYMENT_NAME` environment variable. The platform pulls the image and provisions a micro VM automatically.
 
-For the preview ZIP-based source-code deployment mode, see [GitHub Actions CI/CD](./github-actions.md). That path uses a different multipart REST contract and is documented there to keep this local Bicep guide focused on the shell-script image workflow.
-
 > **Auth:** The script acquires a token scoped to `https://ai.azure.com/` via `az account get-access-token`. `az rest` is **not** used — it does not reliably acquire the correct audience token for this endpoint.
 >
 > `metadata.enableVnextExperience: "true"` is a required server-side field. Omitting it causes a silent failure.
 >
 > `az cognitiveservices agent create` is **not** used — it calls a separate start operation that returns 404 for hosted (container) agents.
+
+**Step 7 — Create source-code agent version**
+
+When `SOURCE_CODE_BASED_AGENT=true`, the script creates a flat zip from `src/agent-framework/responses/basic/` using `git archive`, computes its SHA-256 hash, writes a metadata JSON file, and uploads both parts with a multipart request:
+
+```text
+POST {projectEndpoint}/agents/{sourceCodeAgentName}/versions?api-version=2025-11-15-preview
+```
+
+The source-code agent name is `${AGENT_NAME}-src`, so it can coexist with the image-based agent in the same project. The `/versions` endpoint auto-creates the agent if it does not exist and creates a new version if it does.
+
+The source-code metadata uses `protocol_versions` and `code_configuration` with `dependency_resolution: remote_build`; Foundry builds the runtime container remotely. After the POST returns, the script polls the new version until it reaches `active`, `failed`, or the timeout (`SOURCE_CODE_MAX_POLLING_SECONDS`, default `600`).
+
+> Source-code deployments use `protocol_versions`. Image-based deployments use `container_protocol_versions`. These field names are not interchangeable.
 
 ---
 
