@@ -19,30 +19,23 @@ flowchart TD
   B2 --> AB2["artifact\nterraform-code"]
   B3 --> AB3["artifact\nsource-code"]
   B4 --> AB4["artifact\nagent-image"]
-  AB --> DBICEP["deploy-bicep.yml (reusable)\njob: deploy"]
-  AB2 --> DTERR["deploy-terraform.yml (reusable)\njob: deploy"]
+  AB --> DBICEP["deploy-bicep.yml (reusable)"]
+  AB2 --> DTERR["deploy-terraform.yml (reusable)"]
   AB4 --> DBICEP
   AB4 --> DTERR
-  AB --> DBSC["deploy-bicep-source-code.yml (reusable)\njob: deploy"]
-  AB2 --> DTSC["deploy-terraform-source-code.yml (reusable)\njob: deploy"]
-  AB3 --> DBSC
-  AB3 --> DTSC
+  AB3 --> DBICEP
+  AB3 --> DTERR
 
-    DBICEP --> AC1["deploy-bicep action\naz bicep install\naz deployment sub create\nread outputs"]
-    DBICEP --> AC2["push-image action\ndocker load + tag + push"]
-    DBICEP --> AC3["update-agent action\nFoundry data plane POST"]
+    DBICEP --> BIAC["deploy-iac job\ndeploy-bicep action"]
+    BIAC --> BIMG["update-agent job\npush-image + update-agent"]
+    BIAC --> BSC["update-agent-source-code job\ndownload source-code + multipart POST"]
 
-    DTERR --> AC4["deploy-terraform action\nterraform init/apply\nread outputs"]
-    DTERR --> AC5["push-image action"]
-    DTERR --> AC6["update-agent action"]
-
-    DBSC --> AC1
-    DBSC --> AC7["update-agent-source-code action\nmultipart POST + version poll"]
-    DTSC --> AC4
-    DTSC --> AC7
+    DTERR --> TIAC["deploy-iac job\ndeploy-terraform action"]
+    TIAC --> TIMG["update-agent job\npush-image + update-agent"]
+    TIAC --> TSC["update-agent-source-code job\ndownload source-code + multipart POST"]
 ```
 
-Four deploy jobs (`deploy-bicep`, `deploy-terraform`, `deploy-bicep-source-code`, `deploy-terraform-source-code`) run in parallel after `build` completes. Each is independent — you can remove any job from `ci-cd.yml` if you don't need that IaC path or deployment mode.
+Two provider deploy workflows (`deploy-bicep` and `deploy-terraform`) run in parallel after `build` completes. Each provider workflow provisions infrastructure once, then fans out to two parallel jobs: `update-agent` for the image-based agent and `update-agent-source-code` for the source-code agent. Remove the unused provider job from `ci-cd.yml` if you only need one IaC path.
 
 ### Agent name suffix for source-code deploys
 
@@ -55,7 +48,7 @@ This repository currently supports two different hosted-agent deployment paths, 
 | Mode | What gets uploaded | REST shape | Typical use |
 |---|---|---|---|
 | Image-based | A container image from ACR | JSON POST to `/agents/{name}/versions?api-version=2025-11-15-preview` | Production-style container deployment with a Dockerfile |
-| Source-code | A flat `.zip` of app source plus metadata | Multipart `multipart/form-data` POST to `/agents?api-version=2025-11-15-preview` | Preview source-code deployment demo and rapid iteration |
+| Source-code | A flat `.zip` of app source plus metadata | Multipart `multipart/form-data` POST to `/agents/{name}/versions?api-version=2025-11-15-preview` | Preview source-code deployment demo and rapid iteration |
 
 ### Why the source-code path is different
 
@@ -73,13 +66,15 @@ The two update actions are intentionally different because they target different
 | Action | Request target | Payload shape | Why it differs |
 |---|---|---|---|
 | `update-agent` | `/agents/{name}/versions?api-version=2025-11-15-preview` | Single JSON body | The image-based contract accepts the full hosted-agent definition inline, including image reference, CPU, memory, and environment variables. |
-| `update-agent-source-code` | `/agents?api-version=2025-11-15-preview` on create, then version polling | Multipart form upload | The source-code contract requires a separate `metadata` JSON part and `code` zip part, plus zip-specific preview headers. |
+| `update-agent-source-code` | `/agents/{name}/versions?api-version=2025-11-15-preview`, then version polling | Multipart form upload | The source-code contract requires a separate `metadata` JSON part and `code` zip part, plus zip-specific preview headers. |
+
+The `/versions` endpoint auto-creates the source-code agent when it is missing and adds a new version when it already exists. This keeps create and update behavior aligned with the image-based `update-agent` action.
 
 The source-code path also uses the preview feature headers:
 
 - `Foundry-Features: CodeAgents=V1Preview,HostedAgents=V1Preview`
 - `x-ms-code-zip-sha256: <sha256-of-zip>`
-- `x-ms-agent-name: <agent-name>` on create
+- `x-ms-agent-name: <agent-name>`
 
 These are part of the REST contract for the preview source-code deployment flow.
 
@@ -278,7 +273,7 @@ steps:
       project_endpoint: ${{ steps.deploy-iac.outputs.project_endpoint }}
       agent_name: ${{ inputs.agent_name }}
       model_deployment_name: ${{ steps.deploy-iac.outputs.model_deployment_name }}
-      zip_path: ./source-code.zip
+      source_code_zip: ./.artifacts/source-code/source-code.zip
 ```
 
 For the full set of optional inputs (`cpu`, `memory`, `runtime`, `entry_point`, `max_polling_seconds`), see [Deploying Source Code](./deploy-source-code.md).
@@ -295,7 +290,7 @@ Inputs from `workflow_dispatch` override repository variables. This is useful fo
 
 ## Running Only One IaC Path
 
-If you only need Bicep or Terraform, remove the unused job from `ci-cd.yml`:
+If you only need Bicep or Terraform, remove the unused provider job from `ci-cd.yml`:
 
 ```yaml
 # ci-cd.yml — remove the jobs you don't need
@@ -304,29 +299,17 @@ jobs:
     uses: ./.github/workflows/build.yml
     secrets: inherit
 
-  deploy-bicep:                       # ← remove to skip image-based Bicep
+  deploy-bicep:                       # ← remove to skip Bicep deploys
     needs: build
     uses: ./.github/workflows/deploy-bicep.yml
     secrets: inherit
     with: ...
 
-  deploy-terraform:                   # ← remove to skip image-based Terraform
+  deploy-terraform:                   # ← remove to skip Terraform deploys
     needs: build
     uses: ./.github/workflows/deploy-terraform.yml
     secrets: inherit
     with: ...
-
-  deploy-bicep-source-code:           # ← remove to skip source-code Bicep
-    needs: build
-    uses: ./.github/workflows/deploy-bicep-source-code.yml
-    secrets: inherit
-    with: ...
-
-  deploy-terraform-source-code:       # ← remove to skip source-code Terraform
-    needs: build
-    uses: ./.github/workflows/deploy-terraform-source-code.yml
-    secrets: inherit
-    with: ...
 ```
 
-The `build.yml` workflow always runs both lint jobs, the docker build, and the source-code zip job regardless of which deploy paths you use.
+Each provider workflow deploys both the image-based and source-code agents. To disable one deployment mode in CI, remove the corresponding `update-agent` or `update-agent-source-code` job from the provider workflow you use. The `build.yml` workflow always runs both lint jobs, the docker build, and the source-code zip job regardless of which deploy paths you use.

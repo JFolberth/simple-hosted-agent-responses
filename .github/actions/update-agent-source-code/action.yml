@@ -102,10 +102,13 @@ runs:
           --resource "https://ai.azure.com/" \
           --query accessToken -o tsv)
 
+        # POST /agents/{name}/versions auto-creates the agent if it doesn't
+        # exist and adds a new version if it does, so a single call covers
+        # both first-deploy and update scenarios (matches update-agent).
         HTTP_STATUS=$(curl -s -o /tmp/source_code_response.json \
           -w "%{http_code}" \
           -X POST \
-          "${PROJECT_ENDPOINT}/agents?api-version=2025-11-15-preview" \
+          "${PROJECT_ENDPOINT}/agents/${AGENT_NAME}/versions?api-version=2025-11-15-preview" \
           -H "Authorization: Bearer ${FOUNDRY_TOKEN}" \
           -H "Accept: application/json" \
           -H "Foundry-Features: CodeAgents=V1Preview,HostedAgents=V1Preview" \
@@ -121,7 +124,7 @@ runs:
         fi
 
         RESPONSE=$(cat /tmp/source_code_response.json)
-        AGENT_VERSION=$(echo "$RESPONSE" | python3 -c 'import sys,json; data=json.load(sys.stdin); print(data.get("versions", {}).get("latest", data.get("version", 1)))')
+        AGENT_VERSION=$(echo "$RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["version"])')
         echo "agent_version=${AGENT_VERSION}" >> "$GITHUB_OUTPUT"
         echo "Agent version resolved as ${AGENT_VERSION}"
 
