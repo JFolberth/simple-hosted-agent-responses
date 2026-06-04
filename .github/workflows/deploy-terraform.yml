@@ -1,5 +1,13 @@
 name: Deploy (Terraform)
 
+# Single IaC deploy followed by two parallel agent updates against the same
+# infrastructure. The image-based and source-code-based agents share one
+# Foundry project + ACR + model deployment, so running IaC twice (once per
+# agent flavour) would be wasted work and could race on the same resource
+# group. The fan-out pattern (deploy-iac → update-agent ∥ update-agent-source-code)
+# ensures IaC runs exactly once per CI run and both agent versions are
+# published in parallel.
+
 on:
   workflow_call:
     inputs:
@@ -12,7 +20,7 @@ on:
         required: true
         type: string
       agent_name:
-        description: Foundry hosted agent name
+        description: Foundry hosted agent name (image-based). The source-code agent is published as `<agent_name>-src` on the same project.
         required: true
         type: string
       environment_name:
@@ -36,20 +44,27 @@ on:
         required: true
 
 jobs:
-  # ── Deploy infrastructure, push image, update agent ───────────────────────
-  deploy:
-    name: Deploy
+  # ── Deploy infrastructure ─────────────────────────────────────────────────
+  # Provisions the resource group, Foundry project, ACR, and model deployment.
+  # Its outputs (project_endpoint, acr_endpoint, model_deployment_name) are
+  # promoted to job-level outputs so the two downstream jobs can consume them
+  # without re-running IaC.
+  deploy-iac:
+    name: Deploy IaC
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
     # ARM_ env vars allow the azapi provider to authenticate via OIDC.
-    # They are inherited by all composite action steps in this job.
     env:
       ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       ARM_USE_OIDC: "true"
+    outputs:
+      project_endpoint: ${{ steps.deploy-iac.outputs.project_endpoint }}
+      acr_endpoint: ${{ steps.deploy-iac.outputs.acr_endpoint }}
+      model_deployment_name: ${{ steps.deploy-iac.outputs.model_deployment_name }}
 
     steps:
       - name: Checkout
@@ -67,25 +82,86 @@ jobs:
         uses: ./.github/actions/deploy-terraform
         with:
           environment_name: ${{ inputs.environment_name }}
-          location: ${{ inputs.location || 'swedencentral' }}
-          ai_deployments_location: ${{ inputs.ai_deployments_location || 'swedencentral' }}
+          location: ${{ inputs.location }}
+          ai_deployments_location: ${{ inputs.ai_deployments_location }}
           backend_resource_group: ${{ vars.TF_BACKEND_RESOURCE_GROUP }}
           backend_storage_account: ${{ vars.TF_BACKEND_STORAGE_ACCOUNT }}
           backend_container: ${{ vars.TF_BACKEND_CONTAINER }}
           backend_key: ${{ vars.TF_BACKEND_KEY }}
 
+  # ── Push image + update image-based agent ─────────────────────────────────
+  # Runs in parallel with update-agent-source-code. Both jobs depend only on
+  # deploy-iac, not on each other — they target distinct agent names so they
+  # cannot conflict at the Foundry data plane.
+  update-agent:
+    name: Update Agent (image)
+    needs: deploy-iac
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Azure login
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - name: Push image to ACR
         uses: ./.github/actions/push-image
         with:
-          acr_endpoint: ${{ steps.deploy-iac.outputs.acr_endpoint }}
+          acr_endpoint: ${{ needs.deploy-iac.outputs.acr_endpoint }}
           image_name: ${{ inputs.image_name }}
           image_tag: ${{ inputs.image_tag }}
 
       - name: Update agent
         uses: ./.github/actions/update-agent
         with:
-          project_endpoint: ${{ steps.deploy-iac.outputs.project_endpoint }}
+          project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
           agent_name: ${{ inputs.agent_name }}
-          image: ${{ steps.deploy-iac.outputs.acr_endpoint }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
-          model_deployment_name: ${{ steps.deploy-iac.outputs.model_deployment_name }}
+          image: ${{ needs.deploy-iac.outputs.acr_endpoint }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
+          model_deployment_name: ${{ needs.deploy-iac.outputs.model_deployment_name }}
 
+  # ── Update source-code-based agent ────────────────────────────────────────
+  # Uploads the source-code zip artifact (built once in the build workflow)
+  # to a separate agent name (typically <agent_name>-src) on the same Foundry
+  # project. No image push required — the Foundry runtime builds from source.
+  update-agent-source-code:
+    name: Update Agent (source code)
+    needs: deploy-iac
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Azure login
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Download source-code artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: source-code
+          path: ./.artifacts/source-code
+
+      - name: Update agent with source code
+        uses: ./.github/actions/update-agent-source-code
+        with:
+          project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
+          # Source-code agent shares the same Foundry project as the image-based
+          # agent; the `-src` suffix keeps them as distinct agent versions.
+          agent_name: ${{ inputs.agent_name }}-src
+          source_code_zip: ./.artifacts/source-code/source-code.zip
+          model_deployment_name: ${{ needs.deploy-iac.outputs.model_deployment_name }}
