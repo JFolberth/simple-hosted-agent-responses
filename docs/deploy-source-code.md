@@ -16,8 +16,8 @@ This repository demonstrates source-code deployment through two surfaces:
 
 | Workflow / action | Purpose |
 |---|---|
-| `.github/workflows/deploy-bicep.yml` | Provision Bicep infrastructure, then fan out to image-based and source-code agent updates in parallel |
-| `.github/workflows/deploy-terraform.yml` | Provision Terraform infrastructure, then fan out to image-based and source-code agent updates in parallel |
+| `.github/workflows/deploy-bicep.yml` | Provision infrastructure with Bicep, then update image-based and source-code agents in parallel |
+| `.github/workflows/deploy-terraform.yml` | Provision infrastructure with Terraform, then update image-based and source-code agents in parallel |
 | `.github/actions/update-agent-source-code/action.yml` | Upload the source-code zip plus multipart metadata to the Foundry data plane |
 
 **2. Local shell scripts** — `deploy-bicep.sh` and `deploy-terraform.sh` accept feature flags so you can deploy either or both agent shapes from your workstation. See [Local shell script support](#local-shell-script-support) below.
@@ -108,18 +108,22 @@ For the current Python `remote_build` configuration, the important runtime files
 flowchart TD
     A[build.yml] --> B[source-code.zip artifact]
     A --> X[agent-image artifact]
-    B --> P[deploy-bicep.yml / deploy-terraform.yml]
-    X --> P
-    P --> Q[deploy-iac job<br/>provision infra once]
-    Q --> R[update-agent job<br/>image-based]
-    Q --> S[update-agent-source-code job<br/>source-code]
-    R --> T[push-image action<br/>+ update-agent action]
-    S --> U[update-agent-source-code action]
-    U --> H[POST /agents/name/versions<br/>multipart metadata + code]
-    H --> I[poll version until active]
+    B --> C[deploy-bicep.yml]
+    B --> D[deploy-terraform.yml]
+    X --> C
+    X --> D
+    C --> E[deploy-iac]
+    D --> F[deploy-iac]
+    E --> G[update-agent]
+    E --> H[update-agent-source-code]
+    F --> I[update-agent]
+    F --> J[update-agent-source-code]
+    H --> K[POST multipart metadata + code]
+    J --> K
+    K --> L[poll version until active]
 ```
 
-Within each provider workflow, `deploy-iac` runs once and its outputs (`project_endpoint`, `acr_endpoint`, `model_deployment_name`) are shared with the two downstream agent-update jobs running in parallel. See [GitHub Actions CI/CD](./github-actions.md) for the full orchestration diagram.
+In `ci-cd.yml`, the two deploy workflows (`deploy-bicep` and `deploy-terraform`) run in parallel after `build`. Inside each reusable workflow, `update-agent-source-code` runs in parallel with `update-agent` after a shared `deploy-iac` job. See [GitHub Actions CI/CD](./github-actions.md) for the full orchestration diagram.
 
 ### Step 1 — Build the source-code artifact
 
@@ -178,7 +182,7 @@ The action stops when the version reaches:
 
 ## Workflow Inputs
 
-The consolidated provider workflows (`deploy-bicep.yml` and `deploy-terraform.yml`) take a single `agent_name` input. Inside each workflow the source-code job appends `-src` (for example `agent-framework-agent-basic-responses-src`) so the source-code agent does not collide with the image-based agent registered under the same name in the same Foundry project.
+> In both reusable deploy workflows, the source-code update step calls `update-agent-source-code` with `agent_name: ${{ inputs.agent_name }}-src` so the source-code agent does not collide with the image-based agent in the same Foundry project. With default values, that becomes `agent-framework-agent-basic-responses-src`.
 
 ### Bicep provider workflow
 
@@ -186,18 +190,31 @@ The consolidated provider workflows (`deploy-bicep.yml` and `deploy-terraform.ym
 
 | Input | Purpose |
 |---|---|
-| `agent_name` | Foundry Hosted agent name (the source-code job uses `${agent_name}-src`) |
+| `agent_name` | Foundry Hosted agent name |
+| `image_name` | Container image name for the image-based path |
+| `image_tag` | Container image tag produced by `build.yml` |
 | `environment_name` | Bicep deployment label |
 | `location` | Resource group / deployment region |
 | `ai_deployments_location` | AI model deployment region |
 
 ### Terraform provider workflow
 
-`.github/workflows/deploy-terraform.yml` accepts the same inputs as the Bicep workflow and also passes the optional `TF_BACKEND_*` repository variables to the Terraform composite action.
+`.github/workflows/deploy-terraform.yml` accepts:
+
+| Input | Purpose |
+|---|---|
+| `agent_name` | Foundry Hosted agent name |
+| `image_name` | Container image name for the image-based path |
+| `image_tag` | Container image tag produced by `build.yml` |
+| `environment_name` | Terraform environment name |
+| `location` | Resource group / deployment region |
+| `ai_deployments_location` | AI model deployment region |
+
+The Terraform workflow also passes the optional `TF_BACKEND_*` repository variables to the Terraform composite action, exactly like the image-based deployment workflow.
 
 ### How This Wires Into ci-cd.yml
 
-`ci-cd.yml` invokes `deploy-bicep` and `deploy-terraform` once each. Each call provisions infrastructure once and then runs the image and source-code agent updates in parallel — so a single push to `main` deploys both agent shapes for both providers into their respective Foundry projects. `agent_name`, `environment_name`, `location`, and `ai_deployments_location` are passed through from repository variables or `workflow_dispatch` inputs unchanged; the `-src` suffix for the source-code variant is added inside the provider workflow.
+`ci-cd.yml` invokes `deploy-bicep.yml` and `deploy-terraform.yml` as jobs `deploy-bicep` and `deploy-terraform`, both with `needs: build`. Each reusable workflow then performs a shared IaC deploy and publishes both deployment modes (image-based and source-code) in parallel, so a single push to `main` updates both agents in the same Foundry project.
 
 ---
 

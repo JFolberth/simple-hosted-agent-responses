@@ -10,36 +10,36 @@ This guide covers the automated CI/CD pipeline for simple-hosted-agent. For loca
 flowchart TD
     P["push to main\nor workflow_dispatch"]
     P --> CICD["ci-cd.yml\n(orchestrator)"]
-  CICD --> BUILD["build.yml (reusable)"]
-  BUILD --> B1["bicep job\nlint · validate · what-if"]
-  BUILD --> B2["terraform job\nlint · plan"]
-  BUILD --> B3["source-code job\ncreate source-code.zip"]
-  BUILD --> B4["image job\ndocker build + export"]
-  B1 --> AB["artifact\nbicep-code"]
-  B2 --> AB2["artifact\nterraform-code"]
-  B3 --> AB3["artifact\nsource-code"]
-  B4 --> AB4["artifact\nagent-image"]
-  AB --> DBICEP["deploy-bicep.yml (reusable)"]
-  AB2 --> DTERR["deploy-terraform.yml (reusable)"]
-  AB4 --> DBICEP
-  AB4 --> DTERR
-  AB3 --> DBICEP
-  AB3 --> DTERR
+    CICD --> BUILD["build.yml (reusable)"]
+    BUILD --> B1["bicep job\nlint · validate · what-if"]
+    BUILD --> B2["terraform job\nlint · plan"]
+    BUILD --> B3["source-code job\ncreate source-code.zip"]
+    BUILD --> B4["image job\ndocker build + export"]
+    B1 --> AB["artifact\nbicep-code"]
+    B2 --> AB2["artifact\nterraform-code"]
+    B3 --> AB3["artifact\nsource-code"]
+    B4 --> AB4["artifact\nagent-image"]
+    AB --> DBICEP["deploy-bicep.yml (reusable)"]
+    AB2 --> DTERR["deploy-terraform.yml (reusable)"]
+    AB3 --> DBICEP
+    AB3 --> DTERR
+    AB4 --> DBICEP
+    AB4 --> DTERR
 
-    DBICEP --> BIAC["deploy-iac job\ndeploy-bicep action"]
-    BIAC --> BIMG["update-agent job\npush-image + update-agent"]
-    BIAC --> BSC["update-agent-source-code job\ndownload source-code + multipart POST"]
+    DBICEP --> BIAC["deploy-iac job\n(deploy-bicep action)"]
+    BIAC --> BIMG["update-agent job\n(push-image + update-agent)"]
+    BIAC --> BSRC["update-agent-source-code job\n(update-agent-source-code)"]
 
-    DTERR --> TIAC["deploy-iac job\ndeploy-terraform action"]
-    TIAC --> TIMG["update-agent job\npush-image + update-agent"]
-    TIAC --> TSC["update-agent-source-code job\ndownload source-code + multipart POST"]
+    DTERR --> TIAC["deploy-iac job\n(deploy-terraform action)"]
+    TIAC --> TIMG["update-agent job\n(push-image + update-agent)"]
+    TIAC --> TSRC["update-agent-source-code job\n(update-agent-source-code)"]
 ```
 
-Two provider deploy workflows (`deploy-bicep` and `deploy-terraform`) run in parallel after `build` completes. Each provider workflow provisions infrastructure once, then fans out to two parallel jobs: `update-agent` for the image-based agent and `update-agent-source-code` for the source-code agent. Remove the unused provider job from `ci-cd.yml` if you only need one IaC path.
+Two deploy jobs (`deploy-bicep` and `deploy-terraform`) run in parallel after `build` completes. Each reusable deploy workflow runs IaC once, then fans out into two parallel jobs: image-based update and source-code update.
 
 ### Agent name suffix for source-code deploys
 
-Both source-code jobs and the image-based jobs deploy into the same Foundry project. To prevent agent-name collisions, `ci-cd.yml` automatically appends `-src` to the agent name passed to the source-code workflows. With the default `vars.AGENT_NAME = agent-framework-agent-basic-responses`, the source-code agent is registered as `agent-framework-agent-basic-responses-src`. The suffix is applied in `ci-cd.yml` only; the reusable source-code workflows accept any name verbatim when invoked standalone.
+Both source-code jobs and image-based jobs deploy into the same Foundry project. To prevent collisions, the reusable deploy workflows append `-src` when invoking `update-agent-source-code` (`agent_name: ${{ inputs.agent_name }}-src`). With the default `vars.AGENT_NAME = agent-framework-agent-basic-responses`, the source-code agent is registered as `agent-framework-agent-basic-responses-src`.
 
 ## Two deployment modes: image-based vs source-code
 
@@ -168,7 +168,7 @@ The service principal needs the following roles. All must be assigned **at subsc
 
 ## Composite Action Architecture
 
-Each deploy workflow follows the same pattern: download artifact → IaC deploy → push image → update agent. Logic is extracted to composite actions to avoid duplication.
+Each reusable deploy workflow follows the same pattern: IaC deploy (`deploy-iac`) → parallel fan-out (`update-agent` and `update-agent-source-code`). Logic is extracted to composite actions to avoid duplication.
 
 The `deploy-bicep` and `deploy-terraform` actions surface three of the six IaC outputs (`project_endpoint`, `acr_endpoint`, `model_deployment_name`). See [IaC outputs reference](./iac-outputs.md) for the full set and why the other three aren't surfaced here.
 
@@ -176,10 +176,10 @@ The `deploy-bicep` and `deploy-terraform` actions surface three of the six IaC o
 
 | Artifact | Produced by | Consumed by |
 |---|---|---|
-| `bicep-code` | `build.yml` (bicep-lint job) | `deploy-bicep` action |
-| `terraform-code` | `build.yml` (terraform-plan job) | `deploy-terraform` action |
-| `agent-image` | `build.yml` (image job) | `push-image` action |
-| `source-code` | `build.yml` (source-code job) | `update-agent-source-code` action |
+| `bicep-code` | `build.yml` (bicep job) | `deploy-bicep.yml` → `deploy-bicep` action |
+| `terraform-code` | `build.yml` (terraform job) | `deploy-terraform.yml` → `deploy-terraform` action |
+| `agent-image` | `build.yml` (image job) | `deploy-bicep.yml` / `deploy-terraform.yml` → `push-image` action |
+| `source-code` | `build.yml` (source-code job) | `deploy-bicep.yml` / `deploy-terraform.yml` → `update-agent-source-code` action |
 
 ### Composite actions
 
@@ -194,29 +194,31 @@ The `deploy-bicep` and `deploy-terraform` actions surface three of the six IaC o
 ### Bicep deploy job
 
 ```yaml
-steps:
-  - uses: actions/checkout@v6
-  - uses: azure/login@v3
-    with:
-      client-id: ${{ secrets.AZURE_CLIENT_ID }}
-      tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-      subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-  - uses: ./.github/actions/deploy-bicep
-    id: deploy-iac
-    with:
-      environment_name: ${{ vars.AZURE_ENVIRONMENT_NAME }}
-      location: ${{ vars.AZURE_LOCATION }}
-  - uses: ./.github/actions/push-image
-    with:
-      acr_endpoint: ${{ steps.deploy-iac.outputs.acr_endpoint }}
-      image_name: ${{ vars.IMAGE_NAME }}
-  - uses: ./.github/actions/update-agent
-    with:
-      project_endpoint: ${{ steps.deploy-iac.outputs.project_endpoint }}
-      agent_name: ${{ vars.AGENT_NAME }}
-      acr_endpoint: ${{ steps.deploy-iac.outputs.acr_endpoint }}
-      image_name: ${{ vars.IMAGE_NAME }}
-      model_deployment_name: ${{ steps.deploy-iac.outputs.model_deployment_name }}
+jobs:
+  deploy-iac:
+    # outputs: project_endpoint, acr_endpoint, model_deployment_name
+    ...
+
+  update-agent:
+    needs: deploy-iac
+    steps:
+      - uses: actions/checkout@v6
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: ./.github/actions/push-image
+        with:
+          acr_endpoint: ${{ needs.deploy-iac.outputs.acr_endpoint }}
+          image_name: ${{ inputs.image_name }}
+          image_tag: ${{ inputs.image_tag }}
+      - uses: ./.github/actions/update-agent
+        with:
+          project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
+          agent_name: ${{ inputs.agent_name }}
+          image: ${{ needs.deploy-iac.outputs.acr_endpoint }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
+          model_deployment_name: ${{ needs.deploy-iac.outputs.model_deployment_name }}
 ```
 
 ### Terraform deploy job
@@ -247,36 +249,38 @@ env:
 
 When all four backend inputs are set, the action generates `backend_override.tf` before running `terraform init`, enabling remote state with `use_azuread_auth = true`. When any is unset, local (ephemeral) state is used.
 
-### Source-code deploy job
+### Source-code update job
 
-The source-code deploy jobs follow the same pattern but swap the image steps for a source-code artifact download and the source-code update action:
+Each reusable deploy workflow also includes an `update-agent-source-code` job that runs in parallel with `update-agent`:
 
 ```yaml
-steps:
-  - uses: actions/checkout@v6
-  - uses: azure/login@v3
-    with:
-      client-id: ${{ secrets.AZURE_CLIENT_ID }}
-      tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-      subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-  - uses: ./.github/actions/deploy-bicep      # or deploy-terraform
-    id: deploy-iac
-    with:
-      environment_name: ${{ inputs.environment_name }}
-      location: ${{ inputs.location }}
-  - uses: actions/download-artifact@v8
-    with:
-      name: source-code
-      path: .
-  - uses: ./.github/actions/update-agent-source-code
-    with:
-      project_endpoint: ${{ steps.deploy-iac.outputs.project_endpoint }}
-      agent_name: ${{ inputs.agent_name }}
-      model_deployment_name: ${{ steps.deploy-iac.outputs.model_deployment_name }}
-      source_code_zip: ./.artifacts/source-code/source-code.zip
+jobs:
+  deploy-iac:
+    # outputs: project_endpoint, model_deployment_name
+    ...
+
+  update-agent-source-code:
+    needs: deploy-iac
+    steps:
+      - uses: actions/checkout@v6
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: source-code
+          path: ./.artifacts/source-code
+      - uses: ./.github/actions/update-agent-source-code
+        with:
+          project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
+          agent_name: ${{ inputs.agent_name }}-src
+          model_deployment_name: ${{ needs.deploy-iac.outputs.model_deployment_name }}
+          source_code_zip: ./.artifacts/source-code/source-code.zip
 ```
 
-For the full set of optional inputs (`cpu`, `memory`, `runtime`, `entry_point`, `max_polling_seconds`), see [Deploying Source Code](./deploy-source-code.md).
+For the full set of optional `update-agent-source-code` inputs (`cpu`, `memory`, `runtime`, `entry_point`, `max_polling_seconds`), see [Deploying Source Code](./deploy-source-code.md).
 
 ---
 
@@ -290,7 +294,7 @@ Inputs from `workflow_dispatch` override repository variables. This is useful fo
 
 ## Running Only One IaC Path
 
-If you only need Bicep or Terraform, remove the unused provider job from `ci-cd.yml`:
+If you only need Bicep or Terraform, remove the unused reusable workflow from `ci-cd.yml`:
 
 ```yaml
 # ci-cd.yml — remove the jobs you don't need
@@ -299,17 +303,17 @@ jobs:
     uses: ./.github/workflows/build.yml
     secrets: inherit
 
-  deploy-bicep:                       # ← remove to skip Bicep deploys
+  deploy-bicep:                       # ← remove to skip Bicep path
     needs: build
     uses: ./.github/workflows/deploy-bicep.yml
     secrets: inherit
     with: ...
 
-  deploy-terraform:                   # ← remove to skip Terraform deploys
+  deploy-terraform:                   # ← remove to skip Terraform path
     needs: build
     uses: ./.github/workflows/deploy-terraform.yml
     secrets: inherit
     with: ...
 ```
 
-Each provider workflow deploys both the image-based and source-code agents. To disable one deployment mode in CI, remove the corresponding `update-agent` or `update-agent-source-code` job from the provider workflow you use. The `build.yml` workflow always runs both lint jobs, the docker build, and the source-code zip job regardless of which deploy paths you use.
+Each reusable deploy workflow always runs both deployment modes (image + source-code) after IaC completes.
