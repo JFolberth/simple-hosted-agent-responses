@@ -35,8 +35,8 @@ param aiFoundryProjectName  = 'ai-project'                 // Foundry project na
 Also edit the configuration block at the top of `deployment/deploy-bicep.sh` to match:
 
 ```bash
-ENVIRONMENT_NAME="simple-hosted-agent3"             # Set to the same value as environmentName in main.bicepparam
-LOCATION="eastus"                                   # Set to the same value as location in main.bicepparam
+ENVIRONMENT_NAME="simple-hosted-agent-bicep"        # Set to the same value as environmentName in main.bicepparam
+LOCATION="swedencentral"                            # Set to the same value as location in main.bicepparam
 AGENT_NAME="agent-framework-agent-basic-responses"  # Name for the hosted agent in Foundry
 IMAGE_NAME="agent-framework-agent-basic-responses"  # Container image name (without registry/tag)
 ```
