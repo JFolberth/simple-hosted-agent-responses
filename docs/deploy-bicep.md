@@ -21,8 +21,8 @@ All prerequisites are pre-installed in the dev container.
 Edit `infra/bicep/main.bicepparam` to match your environment before deploying:
 
 ```bicep
-param environmentName       = 'simple-hosted-agent'       // Used in resource naming
-param resourceGroupName     = 'rg-simple-hosted-agent'    // Resource group to create
+param environmentName       = 'simple-hosted-agent-bicep' // Used in resource naming
+param resourceGroupName     = 'rg-simple-hosted-agent-bicep' // Resource group to create
 param location              = 'swedencentral'              // Region for the resource group
 param aiDeploymentsLocation = 'swedencentral'              // Region for model deployments (may differ)
 param aiFoundryProjectName  = 'ai-project'                 // Foundry project name
@@ -35,10 +35,10 @@ param aiFoundryProjectName  = 'ai-project'                 // Foundry project na
 Also edit the configuration block at the top of `deployment/deploy-bicep.sh` to match:
 
 ```bash
-ENVIRONMENT_NAME="simple-hosted-agent"              # Must match environmentName in main.bicepparam
-LOCATION="swedencentral"                            # Must match location in main.bicepparam
+ENVIRONMENT_NAME="simple-hosted-agent-bicep"        # Set to the same value as environmentName in main.bicepparam
+LOCATION="swedencentral"                            # Set to the same value as location in main.bicepparam
 AGENT_NAME="agent-framework-agent-basic-responses"  # Name for the hosted agent in Foundry
-IMAGE_NAME="agent-framework-basic-responses"        # Container image name (without registry/tag)
+IMAGE_NAME="agent-framework-agent-basic-responses"  # Container image name (without registry/tag)
 ```
 
 ---
