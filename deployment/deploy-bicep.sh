@@ -209,13 +209,11 @@ if [ "$IMAGE_BASED_AGENT" = true ]; then
   # Key differences from the management-plane approach:
   #   - Auth scope:  https://ai.azure.com/.default   (not cognitiveservices)
   #   - No --show-logs: container logs are available in the Foundry portal
-  #   - metadata.enableVnextExperience=true is required by the server-side API
   # ───────────────────────────────────────────────────────────────────────────
   echo "==> Deploying image-based hosted agent via Foundry data plane..."
   AGENT_REQUEST_BODY=$(python3 - <<EOF
 import json
 body = {
-  "metadata": {"enableVnextExperience": "true"},
   "definition": {
     "kind": "hosted",
     "container_protocol_versions": [{"protocol": "responses", "version": "1.0.0"}],
@@ -283,7 +281,6 @@ if [ "$SOURCE_CODE_BASED_AGENT" = true ]; then
   python3 - <<EOF > "${SOURCE_CODE_METADATA}"
 import json
 body = {
-  "metadata": {"enableVnextExperience": "true"},
   "definition": {
     "kind": "hosted",
     "protocol_versions": [{"protocol": "responses", "version": "1.0.0"}],

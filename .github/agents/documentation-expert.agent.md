@@ -45,7 +45,7 @@ When adding new documentation, create a new file in `docs/` and link to it from 
 - Use **Mermaid flowcharts** for architecture diagrams and decision trees. Use `flowchart TD` (top-down) by default.
 - Each doc should be **standalone** — a reader of `deploy-terraform.md` should not need to read `deploy-bicep.md` first. Cross-link for deeper detail, but never for basic understanding.
 - Link to external Microsoft/GitHub/HashiCorp official docs rather than reproducing them. Use stable doc URLs from `learn.microsoft.com`, `developer.hashicorp.com`, and `docs.github.com`.
-- Keep security notes prominent. Critical fields (`enableVnextExperience`, role GUIDs, `--platform linux/amd64`) deserve a block quote callout.
+- Keep security notes prominent. Critical fields (role GUIDs, `--platform linux/amd64`) deserve a block quote callout.
 
 ## Key technical conventions
 
@@ -54,7 +54,6 @@ These are hard constraints — document them consistently:
 - **Role assignments always use GUIDs**, never display names (display names have been renamed without changing GUIDs)
 - **`az cognitiveservices agent create` is NOT used** — it calls a broken start operation for hosted agents
 - **`az rest` is NOT used for the Foundry data plane** — use `az account get-access-token --resource https://ai.azure.com/` + `curl`
-- **`metadata.enableVnextExperience: "true"` is required** in every Foundry data plane POST
 - **`--platform linux/amd64` is required** for Docker builds — the Foundry runtime does not support arm64
 - **`azd auth login` is separate from `az login`** — both are required for azd workflows
 - **`TF_BACKEND_*` must be repository VARIABLES, not secrets** — uses `vars.*` namespace

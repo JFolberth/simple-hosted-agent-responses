@@ -164,14 +164,12 @@ if [ "$IMAGE_BASED_AGENT" = true ]; then
   #   POST {projectEndpoint}/agents/{name}/versions?api-version=2025-11-15-preview
   #
   # Auth scope: https://ai.azure.com/.default — NOT cognitiveservices.azure.com.
-  # metadata.enableVnextExperience=true is required by the server-side API.
   # The runtime auto-starts the container; no separate start call is needed.
   # ───────────────────────────────────────────────────────────────────────────
   echo "==> Deploying image-based hosted agent via Foundry data plane..."
   AGENT_REQUEST_BODY=$(python3 - <<EOF
 import json
 body = {
-  "metadata": {"enableVnextExperience": "true"},
   "definition": {
     "kind": "hosted",
     "container_protocol_versions": [{"protocol": "responses", "version": "1.0.0"}],
@@ -234,7 +232,6 @@ if [ "$SOURCE_CODE_BASED_AGENT" = true ]; then
   python3 - <<EOF > "${SOURCE_CODE_METADATA}"
 import json
 body = {
-  "metadata": {"enableVnextExperience": "true"},
   "definition": {
     "kind": "hosted",
     "protocol_versions": [{"protocol": "responses", "version": "1.0.0"}],
