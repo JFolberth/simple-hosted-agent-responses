@@ -116,8 +116,6 @@ The request body specifies `kind: hosted`, the container image reference, CPU/me
 
 > **Auth:** The script acquires a token scoped to `https://ai.azure.com/` via `az account get-access-token`. `az rest` is **not** used — it does not reliably acquire the correct audience token for this endpoint.
 >
-> `metadata.enableVnextExperience: "true"` is a required server-side field. Omitting it causes a silent failure.
->
 > `az cognitiveservices agent create` is **not** used — it calls a separate start operation that returns 404 for hosted (container) agents.
 
 **Step 7 — Create source-code agent version**

@@ -116,7 +116,6 @@ Always build with `--platform linux/amd64`. Foundry runtime does not support arm
 Required fields in the request body:
 ```json
 {
-  "metadata": {"enableVnextExperience": "true"},
   "definition": {
     "kind": "hosted",
     "container_protocol_versions": [{"protocol": "responses", "version": "1.0.0"}],
@@ -127,14 +126,13 @@ Required fields in the request body:
   }
 }
 ```
-`metadata.enableVnextExperience: "true"` is a hard server-side requirement — omitting it causes a silent failure. Auth scope: `https://ai.azure.com/` (not `cognitiveservices.azure.com`). Use `az account get-access-token --resource "https://ai.azure.com/"` + `curl` for the POST — `az rest --resource "https://ai.azure.com/"` does not reliably acquire the correct audience token for this endpoint.
+Auth scope: `https://ai.azure.com/` (not `cognitiveservices.azure.com`). Use `az account get-access-token --resource "https://ai.azure.com/"` + `curl` for the POST — `az rest --resource "https://ai.azure.com/"` does not reliably acquire the correct audience token for this endpoint.
 
 ### Foundry data plane call — source-code
 Source-code deployments also POST to `POST {projectEndpoint}/agents/{name}/versions?api-version=2025-11-15-preview`, but the payload is multipart form data with a `metadata` JSON part and a `code` zip part. The `/versions` endpoint auto-creates the agent if missing and creates a new version if it exists. Required source-code metadata uses `protocol_versions` (not `container_protocol_versions`) plus `code_configuration`:
 
 ```json
 {
-  "metadata": {"enableVnextExperience": "true"},
   "definition": {
     "kind": "hosted",
     "protocol_versions": [{"protocol": "responses", "version": "1.0.0"}],
@@ -216,7 +214,6 @@ Apply the **Don't Repeat Yourself** principle to GitHub Actions. When the same l
 
 - Do not use `az cognitiveservices agent create` — it calls a broken start operation for hosted agents.
 - Do not build Docker images without `--platform linux/amd64` on Apple Silicon.
-- Do not omit `metadata.enableVnextExperience: "true"` in agent version payloads.
 - Do not add the `cognitiveservices` Azure CLI extension as a prerequisite — it is not used.
 - Do not use `azurerm` or `hashicorp/azapi` as the Terraform provider source — use `Azure/azapi`.
 - Do not omit `schema_validation_enabled = false` on `azapi_resource` blocks using `@2026-03-01` or `@2025-10-01-preview` API versions.
@@ -277,6 +274,6 @@ Formatting rules:
 - Use Mermaid `flowchart TD` for architecture diagrams and decision trees
 - Use markdown tables for structured comparisons and reference data
 - Link to external Microsoft/GitHub/HashiCorp docs rather than reproducing content. Use stable URLs from `learn.microsoft.com`, `developer.hashicorp.com`, and `docs.github.com`
-- Role GUIDs, required fields (`enableVnextExperience`), and platform constraints (`--platform linux/amd64`) deserve block quote callouts
+- Role GUIDs and platform constraints (`--platform linux/amd64`) deserve block quote callouts
 
 Accuracy rule: **read the source file before documenting it**. Never document shell scripts, workflows, or actions from memory.
