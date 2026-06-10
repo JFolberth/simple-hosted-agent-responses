@@ -7,10 +7,7 @@ on:
     paths-ignore:
       - '**/*.md'
   workflow_call:
-    outputs:
-      image_tag:
-        description: Image tag — short SHA on push/workflow_call, pr{number}a{run_attempt} on pull_request (e.g. pr30a2)
-        value: ${{ jobs.image.outputs.image_tag }}
+
 
 jobs:
   # ── Bicep lint, validate & what-if ─────────────────────────────────────────
@@ -121,60 +118,3 @@ jobs:
         working-directory: infra/terraform
         run: terraform plan -input=false -var-file=terraform.tfvars
 
-  # ── Build source-code artifact and Docker image in parallel ───────────────
-  source-code:
-    name: Build source-code artifact
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Create source-code zip artifact
-        run: |
-          git archive --format=zip --output=source-code.zip HEAD:src/agent-framework/responses/basic
-
-      - name: Upload source-code artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: source-code
-          path: source-code.zip
-
-  image:
-    name: Build & export Docker image
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      image_tag: ${{ steps.set-tag.outputs.image_tag }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Build Docker image
-        id: set-tag
-        run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            IMAGE_TAG="pr${{ github.event.pull_request.number }}a${{ github.run_attempt }}"
-          else
-            IMAGE_TAG="${GITHUB_SHA::7}"
-          fi
-          docker build \
-            --platform linux/amd64 \
-            --tag agent-framework-basic-responses:${IMAGE_TAG} \
-            --file src/agent-framework/responses/basic/Dockerfile \
-            src/agent-framework/responses/basic
-          echo "IMAGE_TAG=${IMAGE_TAG}" >> "$GITHUB_ENV"
-          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
-
-      - name: Export image as tarball
-        run: docker save agent-framework-basic-responses:${IMAGE_TAG} | gzip > agent-image.tar.gz
-
-      - name: Upload image artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: agent-image
-          path: agent-image.tar.gz
