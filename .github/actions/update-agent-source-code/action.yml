@@ -30,6 +30,10 @@ inputs:
     description: Source-code entry point command for the hosted agent
     required: false
     default: '["python", "main.py"]'
+  dependency_resolution:
+    description: How Agent Service resolves dependencies for the source-code deployment
+    required: false
+    default: 'remote_build'
   max_polling_seconds:
     description: Maximum time to wait for the source-code deployment to reach active status
     required: false
@@ -53,6 +57,7 @@ runs:
         MEMORY: ${{ inputs.memory }}
         RUNTIME: ${{ inputs.runtime }}
         ENTRY_POINT: ${{ inputs.entry_point }}
+        DEPENDENCY_RESOLUTION: ${{ inputs.dependency_resolution }}
       run: |
         METADATA_FILE=$(mktemp)
         ENTRY_POINT_JSON=$(python3 -c 'import json,sys; print(json.dumps(json.loads(sys.argv[1])))' "$ENTRY_POINT")
@@ -61,6 +66,7 @@ runs:
           --arg cpu "$CPU" \
           --arg memory "$MEMORY" \
           --arg runtime "$RUNTIME" \
+          --arg dep_resolution "$DEPENDENCY_RESOLUTION" \
           --argjson entry_point "$ENTRY_POINT_JSON" \
           '{
             description: "Hosted agent deployed from source code",
@@ -72,7 +78,7 @@ runs:
               code_configuration: {
                 runtime: $runtime,
                 entry_point: $entry_point,
-                dependency_resolution: "remote_build"
+                dependency_resolution: $dep_resolution
               },
               environment_variables: {AZURE_AI_MODEL_DEPLOYMENT_NAME: $model}
             }
