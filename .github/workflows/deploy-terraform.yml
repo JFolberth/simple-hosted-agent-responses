@@ -11,14 +11,6 @@ name: Deploy (Terraform)
 on:
   workflow_call:
     inputs:
-      image_name:
-        description: Container image name
-        required: true
-        type: string
-      image_tag:
-        description: Image tag produced by the build job
-        required: true
-        type: string
       agent_name:
         description: Foundry hosted agent name (image-based). The source-code agent is published as `<agent_name>-src` on the same project.
         required: true
