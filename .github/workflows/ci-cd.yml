@@ -14,9 +14,6 @@ on:
       - '**/*.md'
   workflow_dispatch:
     inputs:
-      image_name:
-        description: Container image name — overrides vars.IMAGE_NAME
-        required: false
       agent_name:
         description: Foundry hosted agent name — overrides vars.AGENT_NAME
         required: false
@@ -40,7 +37,7 @@ jobs:
       contents: read
     secrets: inherit
 
-  # ── Deploy — Bicep IaC + image-based agent + source-code agent ────────────
+  # ── Deploy — Bicep IaC + source-code agent ────────────
   deploy-bicep:
     name: Deploy (Bicep)
     needs: build
@@ -49,15 +46,13 @@ jobs:
       id-token: write
       contents: read
     with:
-      image_tag: ${{ needs.build.outputs.image_tag }}
-      image_name: ${{ inputs.image_name || vars.IMAGE_NAME || 'agent-framework-basic-responses' }}
       agent_name: ${{ inputs.agent_name || vars.AGENT_NAME || 'agent-framework-agent-basic-responses' }}
       environment_name: ${{ inputs.environment_name || vars.ENVIRONMENT_NAME }}
       location: ${{ inputs.location || vars.AZURE_LOCATION || 'swedencentral' }}
       ai_deployments_location: ${{ inputs.ai_deployments_location || vars.AZURE_AI_DEPLOYMENTS_LOCATION || 'swedencentral' }}
     secrets: inherit
 
-  # ── Deploy — Terraform IaC + image-based agent + source-code agent ────────
+  # ── Deploy — Terraform IaC + source-code agent ────────
   deploy-terraform:
     name: Deploy (Terraform)
     needs: build
@@ -66,8 +61,6 @@ jobs:
       id-token: write
       contents: read
     with:
-      image_tag: ${{ needs.build.outputs.image_tag }}
-      image_name: ${{ inputs.image_name || vars.IMAGE_NAME || 'agent-framework-basic-responses' }}
       agent_name: ${{ inputs.agent_name || vars.AGENT_NAME || 'agent-framework-agent-basic-responses' }}
       environment_name: ${{ inputs.environment_name || vars.ENVIRONMENT_NAME }}
       location: ${{ inputs.location || vars.AZURE_LOCATION || 'swedencentral' }}
