@@ -11,14 +11,6 @@ name: Deploy (Bicep)
 on:
   workflow_call:
     inputs:
-      image_name:
-        description: Container image name
-        required: true
-        type: string
-      image_tag:
-        description: Image tag produced by the build job
-        required: true
-        type: string
       agent_name:
         description: Foundry hosted agent name (image-based). The source-code agent is published as `<agent_name>-src` on the same project.
         required: true
@@ -77,44 +69,6 @@ jobs:
         with:
           environment_name: ${{ inputs.environment_name }}
           location: ${{ inputs.location }}
-
-  # ── Push image + update image-based agent ─────────────────────────────────
-  # Runs in parallel with update-agent-source-code. Both jobs depend only on
-  # deploy-iac, not on each other — they target distinct agent names so they
-  # cannot conflict at the Foundry data plane.
-  update-agent:
-    name: Update Agent (image)
-    needs: deploy-iac
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Azure login
-        uses: azure/login@v3
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Push image to ACR
-        uses: ./.github/actions/push-image
-        with:
-          acr_endpoint: ${{ needs.deploy-iac.outputs.acr_endpoint }}
-          image_name: ${{ inputs.image_name }}
-          image_tag: ${{ inputs.image_tag }}
-
-      - name: Update agent
-        uses: ./.github/actions/update-agent
-        with:
-          project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
-          agent_name: ${{ inputs.agent_name }}
-          image: ${{ needs.deploy-iac.outputs.acr_endpoint }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
-          model_deployment_name: ${{ needs.deploy-iac.outputs.model_deployment_name }}
 
   # ── Update source-code-based agent ────────────────────────────────────────
   # Uploads the source-code zip artifact (built once in the build workflow)
