@@ -25,7 +25,7 @@ inputs:
   runtime:
     description: Source-code runtime for the hosted agent
     required: false
-    default: 'python_3_14'
+    default: 'python_3_13'
   entry_point:
     description: Source-code entry point command for the hosted agent
     required: false

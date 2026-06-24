@@ -45,7 +45,7 @@ SOURCE_CODE_AGENT_NAME="${AGENT_NAME}-src"
 # Source-code deployment tunables (mirror update-agent-source-code/action.yml defaults)
 SOURCE_CODE_CPU="0.25"
 SOURCE_CODE_MEMORY="0.5Gi"
-SOURCE_CODE_RUNTIME="python_3_14"
+SOURCE_CODE_RUNTIME="python_3_13"
 SOURCE_CODE_ENTRY_POINT='["python", "main.py"]'
 SOURCE_CODE_MAX_POLLING_SECONDS=600
 
