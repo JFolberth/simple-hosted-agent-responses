@@ -139,16 +139,19 @@ runs:
           ELAPSED=$(($(date +%s) - START_TIME))
           if [[ $ELAPSED -gt $MAX_POLLING_SECONDS ]]; then
             echo "Error: Agent version did not reach active state within ${MAX_POLLING_SECONDS} seconds"
+            echo "Last version document:"
+            cat /tmp/source_code_version.json 2>/dev/null || echo "(no response body captured)"
             exit 1
           fi
 
-          VERSION_STATUS=$(curl -s \
+          curl -s \
+            -o /tmp/source_code_version.json \
             -X GET \
             "${PROJECT_ENDPOINT}/agents/${AGENT_NAME}/versions/${AGENT_VERSION}?api-version=2025-11-15-preview" \
             -H "Authorization: Bearer ${FOUNDRY_TOKEN}" \
             -H "Accept: application/json" \
-            -H "Foundry-Features: CodeAgents=V1Preview,HostedAgents=V1Preview" \
-            | python3 -c 'import sys,json; data=json.load(sys.stdin); print(data.get("status", "unknown"))' 2>/dev/null)
+            -H "Foundry-Features: CodeAgents=V1Preview,HostedAgents=V1Preview"
+          VERSION_STATUS=$(python3 -c 'import sys,json; print(json.load(sys.stdin).get("status", "unknown"))' < /tmp/source_code_version.json)
 
           echo "Current status: ${VERSION_STATUS} (elapsed ${ELAPSED}s)"
           if [[ "$VERSION_STATUS" == "active" ]]; then
@@ -157,6 +160,8 @@ runs:
           fi
           if [[ "$VERSION_STATUS" == "failed" ]]; then
             echo "Error: Agent version reached failed status"
+            echo "Version document:"
+            cat /tmp/source_code_version.json
             exit 1
           fi
 
