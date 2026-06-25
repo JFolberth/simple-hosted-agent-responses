@@ -13,11 +13,13 @@
 #   Only image-based agent:          ./deployment/deploy-terraform.sh --no-source-code-agent
 #   Only source-code-based agent:    ./deployment/deploy-terraform.sh --no-image-agent
 #   Skip RBAC grant + 120s wait:     ./deployment/deploy-terraform.sh --skip-rbac
+#   Skip post-deploy smoke tests:    ./deployment/deploy-terraform.sh --no-smoke-test
 #
 # Environment variables (override defaults; CLI flags override env):
 #   IMAGE_BASED_AGENT=true|false           default: true
 #   SOURCE_CODE_BASED_AGENT=true|false     default: true
 #   SKIP_RBAC=true|false                   default: false
+#   SMOKE_TEST=true|false                  default: true
 
 set -euo pipefail
 
@@ -53,12 +55,14 @@ SOURCE_CODE_MAX_POLLING_SECONDS=600
 # ─────────────────────────────────────────────────────────────────────────────
 SKIP_INFRA=false
 SKIP_RBAC="${SKIP_RBAC:-false}"
+SMOKE_TEST="${SMOKE_TEST:-true}"
 for arg in "$@"; do
   case $arg in
     --skip-infra) SKIP_INFRA=true ;;
     --skip-rbac) SKIP_RBAC=true ;;
     --no-image-agent) IMAGE_BASED_AGENT=false ;;
     --no-source-code-agent) SOURCE_CODE_BASED_AGENT=false ;;
+    --no-smoke-test) SMOKE_TEST=false ;;
     *) echo "Unknown argument: $arg"; exit 1 ;;
   esac
 done
@@ -300,6 +304,27 @@ EOF
   done
 else
   echo "==> Skipping source-code-based agent deployment (SOURCE_CODE_BASED_AGENT=false)."
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Step 8: Smoke tests — POST to each deployed agent's Responses endpoint and
+# assert the expected behaviours from deployment/smoke-tests.json.
+# ─────────────────────────────────────────────────────────────────────────────
+echo "==> Running smoke tests..."
+if [ "$SMOKE_TEST" != true ]; then
+  echo "    Skipping (SMOKE_TEST=false / --no-smoke-test)."
+else
+  if [ "$SKIP_RBAC" = true ]; then
+    echo "    WARNING: --skip-rbac was set; smoke tests may 404 without Foundry Project Manager."
+  fi
+  SMOKE_ARGS=(--project-endpoint "${PROJECT_ENDPOINT}")
+  if [ "$IMAGE_BASED_AGENT" = true ]; then
+    SMOKE_ARGS+=(--agent-name "${AGENT_NAME}")
+  fi
+  if [ "$SOURCE_CODE_BASED_AGENT" = true ]; then
+    SMOKE_ARGS+=(--agent-name "${SOURCE_CODE_AGENT_NAME}")
+  fi
+  FOUNDRY_TOKEN="${FOUNDRY_TOKEN}" python3 "${SCRIPT_DIR}/smoke-tests.py" "${SMOKE_ARGS[@]}"
 fi
 
 echo ""
