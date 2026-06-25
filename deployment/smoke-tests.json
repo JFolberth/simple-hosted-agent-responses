@@ -1,0 +1,67 @@
+{
+  "_comment": "Smoke tests for the Transformers-expert hosted agent. Each test POSTs to the Responses data-plane endpoint and asserts case-insensitive substring matches on the response text. Tests run in order per agent; tests with `use_previous_response_id` reference an id saved earlier via `save_response_id_as` (per-agent scope).",
+  "tests": [
+    {
+      "id": "basic_response",
+      "description": "Agent responds at all and answers in-domain.",
+      "prompt": "Who is Optimus Prime?",
+      "assertions": {
+        "contains_any": ["optimus", "prime"]
+      }
+    },
+    {
+      "id": "thread_turn_1",
+      "description": "First turn of a multi-turn conversation; captures the response id for turn 2.",
+      "prompt": "Who is Megatron?",
+      "assertions": {
+        "contains_any": ["megatron"]
+      },
+      "save_response_id_as": "megatron_thread"
+    },
+    {
+      "id": "thread_turn_2",
+      "description": "Second turn using previous_response_id; answer must demonstrate context survived (Megatron leads the Decepticons).",
+      "prompt": "What faction does he lead?",
+      "use_previous_response_id": "megatron_thread",
+      "assertions": {
+        "contains_any": ["decepticon"]
+      }
+    },
+    {
+      "id": "offtopic_refusal",
+      "description": "Off-topic question must be refused (system prompt rule 1) and must NOT leak the off-topic answer.",
+      "prompt": "What is the capital of France?",
+      "assertions": {
+        "contains_any": ["only answer questions about transformers"],
+        "contains_none": ["paris"]
+      }
+    },
+    {
+      "id": "no_hallucination",
+      "description": "Fabricated premise must be rejected with an honesty marker (system prompt rule 2).",
+      "prompt": "In which EarthSpark episode does Optimus Prime marry Megatron?",
+      "assertions": {
+        "contains_any": [
+          "i don't know",
+          "i do not know",
+          "not certain",
+          "no such",
+          "not aware",
+          "cannot confirm",
+          "no episode",
+          "does not happen",
+          "did not happen",
+          "never happens"
+        ]
+      }
+    },
+    {
+      "id": "continuity_aware",
+      "description": "Continuity-dependent question must call out that the answer depends on continuity (system prompt rule 3).",
+      "prompt": "Who killed Optimus Prime?",
+      "assertions": {
+        "contains_any": ["continuity", "depends", "differs", "different", "varies", "depending on"]
+      }
+    }
+  ]
+}

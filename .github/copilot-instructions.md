@@ -205,7 +205,7 @@ Apply the **Don't Repeat Yourself** principle to GitHub Actions. When the same l
 - Pass all inputs via `env:` vars inside `run:` steps — never interpolate `${{ inputs.* }}` directly into shell strings (injection risk).
 - The calling job must run `actions/checkout@v6` before invoking any local composite action — the runner needs the repo on disk to resolve `./.github/actions/<name>`.
 - The calling job handles Azure CLI authentication (`azure/login@v3`) before invoking the action; the action assumes an authenticated session. This keeps actions auth-strategy-agnostic.
-- Existing composite actions in this repo: `deploy-bicep` (Bicep IaC deploy + outputs), `deploy-terraform` (Terraform IaC deploy + outputs), `push-image` (ACR image push), `update-agent` (Foundry data plane POST).
+- Existing composite actions in this repo: `deploy-bicep` (Bicep IaC deploy + outputs), `deploy-terraform` (Terraform IaC deploy + outputs), `push-image` (ACR image push), `update-agent` (Foundry data plane POST), `update-agent-source-code` (Foundry data plane multipart POST + poll), `smoke-test` (post-deploy Responses-endpoint validation via `deployment/smoke-tests.py`).
 
 **Reusable workflow conventions:**
 - Declare `on: workflow_call:` only (no `push:` / `pull_request:` triggers) for workflows that are always called from another workflow.
@@ -238,12 +238,13 @@ for f in [
     '.github/workflows/deploy-bicep.yml',
     '.github/workflows/deploy-terraform.yml',
     '.github/workflows/ci-cd.yml',
-    '.github/workflows/deploy.yml',
     '.github/workflows/build.yml',
     '.github/actions/deploy-bicep/action.yml',
     '.github/actions/deploy-terraform/action.yml',
     '.github/actions/push-image/action.yml',
     '.github/actions/update-agent/action.yml',
+    '.github/actions/update-agent-source-code/action.yml',
+    '.github/actions/smoke-test/action.yml',
 ]:
     try:
         yaml.load(open(f), Loader=_DupCheckLoader)

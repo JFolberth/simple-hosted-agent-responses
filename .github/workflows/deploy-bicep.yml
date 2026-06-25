@@ -115,7 +115,11 @@ jobs:
           agent_name: ${{ inputs.agent_name }}
           image: ${{ needs.deploy-iac.outputs.acr_endpoint }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
           model_deployment_name: ${{ needs.deploy-iac.outputs.model_deployment_name }}
-
+      - name: Smoke test
+        uses: ./.github/actions/smoke-test
+        with:
+          project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
+          agent_name: ${{ inputs.agent_name }}
   # ── Update source-code-based agent ────────────────────────────────────────
   # Uploads the source-code zip artifact (built once in the build workflow)
   # to a separate agent name (typically <agent_name>-src) on the same Foundry
@@ -154,3 +158,9 @@ jobs:
           agent_name: ${{ inputs.agent_name }}-src
           source_code_zip: ./.artifacts/source-code/source-code.zip
           model_deployment_name: ${{ needs.deploy-iac.outputs.model_deployment_name }}
+
+      - name: Smoke test
+        uses: ./.github/actions/smoke-test
+        with:
+          project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
+          agent_name: ${{ inputs.agent_name }}-src
