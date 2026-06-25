@@ -49,8 +49,11 @@
           "not aware",
           "cannot confirm",
           "no episode",
-          "does not happen",
-          "did not happen",
+          "no storyline",
+          "does not",
+          "doesn't",
+          "did not",
+          "didn't",
           "never happens"
         ]
       }
