@@ -55,12 +55,12 @@ IMAGE_NAME="agent-framework-agent-basic-responses"      # Container image name (
 
 ## Shell Script
 
-`deployment/deploy-terraform.sh` runs the full deployment from your local machine in seven steps. By default, it deploys both the image-based agent and the source-code agent.
+`deployment/deploy-terraform.sh` runs the full deployment from your local machine in eight steps. By default, it deploys both the image-based agent and the source-code agent, then runs a post-deploy smoke test against each.
 
 ### Usage
 
 ```bash
-# Full deploy — infrastructure + image-based agent + source-code agent
+# Full deploy — infrastructure + image-based agent + source-code agent + smoke tests
 ./deployment/deploy-terraform.sh
 
 # Code-only update — skip infrastructure, update both agents
@@ -74,6 +74,9 @@ IMAGE_NAME="agent-framework-agent-basic-responses"      # Container image name (
 
 # Skip the Foundry Project Manager grant and 120s RBAC wait
 ./deployment/deploy-terraform.sh --skip-rbac
+
+# Skip post-deploy smoke tests
+./deployment/deploy-terraform.sh --no-smoke-test
 ```
 
 > Run from anywhere in the repo. The script resolves the repo root from its own location.
@@ -85,6 +88,7 @@ IMAGE_NAME="agent-framework-agent-basic-responses"      # Container image name (
 | `--no-image-agent` | `IMAGE_BASED_AGENT=false` | `true` | Skip ACR login, Docker build/push, and image-based agent version creation |
 | `--no-source-code-agent` | `SOURCE_CODE_BASED_AGENT=false` | `true` | Skip source-code zip creation, multipart upload, and remote-build polling |
 | `--skip-rbac` | `SKIP_RBAC=true` | `false` | Skip the Foundry Project Manager role assignment and the 120-second RBAC propagation wait |
+| `--no-smoke-test` | `SMOKE_TEST=false` | `true` | Skip Step 8 (post-deploy smoke tests). See [Smoke tests](./smoke-tests.md). |
 
 CLI flags override the default values. The script exits before deployment if both agent modes resolve to `false`.
 
@@ -121,6 +125,14 @@ The source-code agent name is `${AGENT_NAME}-src`, so it can coexist with the im
 The source-code metadata uses `protocol_versions` and `code_configuration` with `dependency_resolution: remote_build`; Foundry builds the runtime container remotely. After the POST returns, the script polls the new version until it reaches `active`, `failed`, or the timeout (`SOURCE_CODE_MAX_POLLING_SECONDS`, default `600`).
 
 > Source-code deployments use `protocol_versions`. Image-based deployments use `container_protocol_versions`. These field names are not interchangeable.
+
+**Step 8 — Smoke tests**
+
+When `SMOKE_TEST=true` (default), the script invokes `deployment/smoke-tests.py` against every agent that was just deployed — the image-based agent (`${AGENT_NAME}`), the source-code agent (`${AGENT_NAME}-src`), or both. The runner POSTs each prompt from [`deployment/smoke-tests.json`](../deployment/smoke-tests.json) to the agent's Responses endpoint and asserts case-insensitive substring rules on the reply. A failure exits non-zero.
+
+If `--skip-rbac` was set earlier, the step prints a warning: the runner needs the same Foundry Project Manager grant to hit the data plane, and without it every test will 404.
+
+Pass `--no-smoke-test` or set `SMOKE_TEST=false` to skip. For test catalog details, schema, and how to add tests, see [Smoke tests](./smoke-tests.md).
 
 ---
 

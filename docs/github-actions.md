@@ -190,6 +190,7 @@ The `deploy-bicep` and `deploy-terraform` actions surface three of the six IaC o
 | `push-image` | [.github/actions/push-image/action.yml](../.github/actions/push-image/action.yml) | Downloads `agent-image` tarball, `docker load`, `az acr login`, `docker tag/push` |
 | `update-agent` | [.github/actions/update-agent/action.yml](../.github/actions/update-agent/action.yml) | POSTs the container-based hosted-agent definition to the Foundry data plane |
 | `update-agent-source-code` | [.github/actions/update-agent-source-code/action.yml](../.github/actions/update-agent-source-code/action.yml) | Uploads a `.zip` plus multipart metadata for the preview source-code hosted-agent path |
+| `smoke-test` | [.github/actions/smoke-test/action.yml](../.github/actions/smoke-test/action.yml) | Runs `deployment/smoke-tests.py` against a deployed agent. See [Smoke tests in CI](#smoke-tests-in-ci). |
 
 ### Bicep deploy job
 
@@ -281,6 +282,23 @@ jobs:
 ```
 
 For the full set of optional `update-agent-source-code` inputs (`cpu`, `memory`, `runtime`, `entry_point`, `max_polling_seconds`), see [Deploying Source Code](./deploy-source-code.md).
+
+### Smoke tests in CI
+
+The `smoke-test` composite action runs as the **last step** of every `update-agent*` job, validating that each freshly-deployed agent answers prompts as expected before the pipeline reports green. That produces **four invocations per pipeline run** — one per agent variant per IaC tool:
+
+| Workflow | Job | Agent name | Smoke step location |
+|---|---|---|---|
+| `deploy-bicep.yml` | `update-agent` | `${{ inputs.agent_name }}` | After `update-agent` step |
+| `deploy-bicep.yml` | `update-agent-source-code` | `${{ inputs.agent_name }}-src` | After `update-agent-source-code` step |
+| `deploy-terraform.yml` | `update-agent` | `${{ inputs.agent_name }}` | After `update-agent` step |
+| `deploy-terraform.yml` | `update-agent-source-code` | `${{ inputs.agent_name }}-src` | After `update-agent-source-code` step |
+
+A smoke failure fails only its own update job. The parallel update job for the other agent variant continues, as does the other IaC tool's entire deploy workflow — so a single flaky case never blocks the whole pipeline from completing and surfacing useful information.
+
+The action assumes the caller has already run `actions/checkout@v6` (so the runner script and catalog are on disk) and `azure/login@v3` (so the runner can call `az account get-access-token`). It does not perform either itself — this matches the existing composite-action contract used by `push-image`, `update-agent`, and `update-agent-source-code`.
+
+For the runner's CLI, the catalog schema, multi-turn threading, and how to add new tests, see [Smoke tests](./smoke-tests.md).
 
 ---
 
