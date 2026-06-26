@@ -198,6 +198,7 @@ azd deploy
 | Step 3 — grant Foundry Project Manager | `postprovision` hook → `deployment/scripts/grant-project-manager.sh` |
 | Step 5 — build and push image | `azure.ai.agents` extension via ACR remote build (no local Docker required) |
 | Step 6 — create agent version | `azure.ai.agents` extension via Foundry data plane POST |
+| Step 8 — smoke tests | `postdeploy` hook → `deployment/scripts/run-smoke-tests.sh`. Set `SMOKE_TEST=false` (via `azd env set` or `SMOKE_TEST=false azd up`) to skip. Override the agent name with `AGENT_NAME` if you renamed the service. See [Smoke tests](./smoke-tests.md). |
 
 ### Notes
 

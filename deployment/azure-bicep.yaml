@@ -34,6 +34,11 @@ hooks:
         run: ./scripts/grant-project-manager.sh
         interactive: false
         continueOnError: false
+    postdeploy:
+        shell: sh
+        run: ./scripts/run-smoke-tests.sh
+        interactive: false
+        continueOnError: false
 
 infra:
     provider: bicep

@@ -24,6 +24,7 @@ A minimal reference for deploying a Python AI agent to Azure AI Foundry Hosted A
 | `deployment/azure-bicep.yaml` | azd config for Bicep (`infra.provider: bicep`, points to `deployment/infra-azd/`) |
 | `deployment/azure-terraform.yaml` | azd config for Terraform (`infra.provider: terraform`, points to `infra/terraform/`) |
 | `deployment/scripts/grant-project-manager.sh` | azd `postprovision` hook — grants Foundry Project Manager to the deploying principal at project scope (equivalent to Step 3 of the deploy scripts) |
+| `deployment/scripts/run-smoke-tests.sh` | azd `postdeploy` hook — runs `deployment/smoke-tests.py` against the deployed agent (equivalent to Step 8 of the deploy scripts). Skip with `SMOKE_TEST=false`; override agent with `AGENT_NAME`. |
 | `deployment/infra-azd/main.bicepparam` | azd-compatible Bicep parameter shim — uses `readEnvironmentVariable()` for azd env var injection |
 
 The **Foundry data plane** (`POST {projectEndpoint}/agents/{name}/versions?api-version=2025-11-15-preview`) is used to create agent versions — NOT `az cognitiveservices agent create`, which calls a broken `containers/default:start` operation.

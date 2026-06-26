@@ -183,6 +183,7 @@ azd deploy
 - `deployment/azure.yaml` is gitignored. It is generated locally by `azd-select.sh` and must not be committed.
 - azd injects `TF_VAR_environment_name`, `TF_VAR_location`, and `TF_VAR_resource_group_name` automatically. Set `AI_DEPLOYMENTS_LOCATION` to control `TF_VAR_ai_deployments_location`. `terraform.tfvars` is used as a fallback for variables not set by azd.
 - **Remote state with azd:** azd calls `terraform init` internally. If `infra/terraform/backend_override.tf` exists (created by the [remote state opt-in](#remote-state--local-opt-in) setup), Terraform will use it automatically during `azd up`.
+- **Smoke tests:** A `postdeploy` hook (`deployment/scripts/run-smoke-tests.sh`) runs [`deployment/smoke-tests.py`](../deployment/smoke-tests.py) against the agent that `azd deploy` just created. Set `SMOKE_TEST=false` (via `azd env set` or `SMOKE_TEST=false azd up`) to skip. Override the agent name with `AGENT_NAME` if you renamed the service. See [Smoke tests](./smoke-tests.md).
 
 ---
 

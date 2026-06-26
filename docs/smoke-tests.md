@@ -130,6 +130,19 @@ If neither is present, the assertion text is empty and any `contains_*` rule wil
 
 Both shell scripts invoke the runner as Step 8 by default. See [Deploying with Bicep](./deploy-bicep.md#what-each-step-does) and [Deploying with Terraform](./deploy-terraform.md#what-each-step-does) for the integration details.
 
+### As part of an azd deploy
+
+Both `azure-bicep.yaml` and `azure-terraform.yaml` register a `postdeploy` hook that runs [`deployment/scripts/run-smoke-tests.sh`](../deployment/scripts/run-smoke-tests.sh) after the `azure.ai.agents` extension creates the agent version. The hook is automatic for `azd up` and `azd deploy` — no extra wiring required. azd auto-injects `AZURE_AI_PROJECT_ENDPOINT` from infra outputs into the hook process.
+
+Overrides (all via `azd env set` or one-shot `VAR=... azd up`):
+
+| Variable | Default | Effect |
+|---|---|---|
+| `SMOKE_TEST` | `true` | Set to `false` to skip the postdeploy hook entirely |
+| `AGENT_NAME` | `agent-framework-agent-basic-responses` | Override when the service has been renamed in `azure.yaml` |
+
+The azd flow only deploys the image-based agent (not the source-code variant), so the hook smoke-tests one agent per `azd up`. For both variants, use the shell scripts.
+
 ### Standalone
 
 To re-run smoke tests against an already-deployed agent without re-deploying:
