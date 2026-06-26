@@ -27,7 +27,6 @@
         "contains_any": ["decepticon"]
       }
     },
-    ,
     {
       "id": "conversation_create",
       "description": "Create a Responses-protocol conversation resource; subsequent turns thread via the conversation id instead of previous_response_id.",
