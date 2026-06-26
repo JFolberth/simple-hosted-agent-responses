@@ -45,12 +45,12 @@ IMAGE_NAME="agent-framework-agent-basic-responses"  # Container image name (with
 
 ## Shell Script
 
-`deployment/deploy-bicep.sh` runs the full deployment from your local machine in seven steps. By default, it deploys both the image-based agent and the source-code agent.
+`deployment/deploy-bicep.sh` runs the full deployment from your local machine in eight steps. By default, it deploys both the image-based agent and the source-code agent, then runs a post-deploy smoke test against each.
 
 ### Usage
 
 ```bash
-# Full deploy — infrastructure + image-based agent + source-code agent
+# Full deploy — infrastructure + image-based agent + source-code agent + smoke tests
 ./deployment/deploy-bicep.sh
 
 # Code-only update — skip infrastructure, update both agents
@@ -64,6 +64,9 @@ IMAGE_NAME="agent-framework-agent-basic-responses"  # Container image name (with
 
 # Skip the Foundry Project Manager grant and 120s RBAC wait
 ./deployment/deploy-bicep.sh --skip-rbac
+
+# Skip post-deploy smoke tests
+./deployment/deploy-bicep.sh --no-smoke-test
 ```
 
 > Run from anywhere in the repo. The script resolves the repo root from its own location.
@@ -75,6 +78,7 @@ IMAGE_NAME="agent-framework-agent-basic-responses"  # Container image name (with
 | `--no-image-agent` | `IMAGE_BASED_AGENT=false` | `true` | Skip ACR login, Docker build/push, and image-based agent version creation |
 | `--no-source-code-agent` | `SOURCE_CODE_BASED_AGENT=false` | `true` | Skip source-code zip creation, multipart upload, and remote-build polling |
 | `--skip-rbac` | `SKIP_RBAC=true` | `false` | Skip the Foundry Project Manager role assignment and the 120-second RBAC propagation wait |
+| `--no-smoke-test` | `SMOKE_TEST=false` | `true` | Skip Step 8 (post-deploy smoke tests). See [Smoke tests](./smoke-tests.md). |
 
 CLI flags override the default values. The script exits before deployment if both agent modes resolve to `false`.
 
@@ -132,6 +136,14 @@ The source-code metadata uses `protocol_versions` and `code_configuration` with 
 
 > Source-code deployments use `protocol_versions`. Image-based deployments use `container_protocol_versions`. These field names are not interchangeable.
 
+**Step 8 — Smoke tests**
+
+When `SMOKE_TEST=true` (default), the script invokes `deployment/smoke-tests.py` against every agent that was just deployed — the image-based agent (`${AGENT_NAME}`), the source-code agent (`${AGENT_NAME}-src`), or both. The runner POSTs each prompt from [`deployment/smoke-tests.json`](../deployment/smoke-tests.json) to the agent's Responses endpoint and asserts case-insensitive substring rules on the reply. A failure exits non-zero.
+
+If `--skip-rbac` was set earlier, the step prints a warning: the runner needs the same Foundry Project Manager grant to hit the data plane, and without it every test will 404.
+
+Pass `--no-smoke-test` or set `SMOKE_TEST=false` to skip. For test catalog details, schema, and how to add tests, see [Smoke tests](./smoke-tests.md).
+
 ---
 
 ## Azure Developer CLI (azd)
@@ -186,6 +198,7 @@ azd deploy
 | Step 3 — grant Foundry Project Manager | `postprovision` hook → `deployment/scripts/grant-project-manager.sh` |
 | Step 5 — build and push image | `azure.ai.agents` extension via ACR remote build (no local Docker required) |
 | Step 6 — create agent version | `azure.ai.agents` extension via Foundry data plane POST |
+| Step 8 — smoke tests | `postdeploy` hook → `deployment/scripts/run-smoke-tests.sh`. Set `SMOKE_TEST=false` (via `azd env set` or `SMOKE_TEST=false azd up`) to skip. Override the agent name with `AGENT_NAME` if you renamed the service. See [Smoke tests](./smoke-tests.md). |
 
 ### Notes
 

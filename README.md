@@ -125,7 +125,10 @@ See [Deploying with Bicep](docs/deploy-bicep.md#azure-developer-cli-azd) or [Dep
 ./deployment/deploy-bicep.sh --no-image-agent        # Source-code agent only, no Docker
 ./deployment/deploy-bicep.sh --no-source-code-agent  # Image-based agent only
 ./deployment/deploy-bicep.sh --skip-rbac             # Skip RBAC grant + 120s wait when already assigned
+./deployment/deploy-bicep.sh --no-smoke-test         # Skip the post-deploy smoke test suite
 ```
+
+Both scripts run a post-deploy smoke test against every agent they just deployed — the runner POSTs the prompts in [`deployment/smoke-tests.json`](deployment/smoke-tests.json) to each agent's Responses endpoint and asserts the agent's reply matches the expected behaviour. A failure exits the script non-zero. Pass `--no-smoke-test` to skip. See [Smoke tests](docs/smoke-tests.md) for the catalog, schema, and how to extend it.
 
 See [Deploying with Bicep](docs/deploy-bicep.md) or [Deploying with Terraform](docs/deploy-terraform.md) for configuration, step-by-step walkthrough, and state management.
 
@@ -175,6 +178,8 @@ azd deploy
 ```
 
 By default, the script creates both a new image-based version and a new source-code version. Passing `--no-image-agent` skips Docker and lets Foundry build from the uploaded source-code zip. For more substantial changes — adding tools, swapping the model client, or switching protocols — see the [Agent Framework documentation](https://github.com/microsoft/agent-framework).
+
+> **Keep the smoke tests in sync.** [`deployment/smoke-tests.json`](deployment/smoke-tests.json) asserts the current agent's persona and behavioural rules (e.g. the Transformers-only refusal phrase, the no-fabrication marker, the continuity disclosure). If you change `instructions=` in [main.py](src/agent-framework/responses/basic/main.py), update the prompts and assertions in `smoke-tests.json` to match — otherwise every deploy will fail Step 8. See [Smoke tests](docs/smoke-tests.md#adding-a-new-test) for the schema.
 
 ---
 
@@ -237,6 +242,7 @@ Detailed guides for each deployment path and the CI/CD pipeline:
 | [Deploying with Terraform](docs/deploy-terraform.md) | Shell script and azd deployment using Terraform; includes local and remote state management |
 | [Deploying Source Code](docs/deploy-source-code.md) | ZIP-based hosted-agent deployment using the repository's GitHub Actions workflows |
 | [GitHub Actions CI/CD](docs/github-actions.md) | Workflow architecture, OIDC auth setup, RBAC requirements, secrets/variables reference, composite action internals |
+| [Smoke tests](docs/smoke-tests.md) | Post-deploy smoke test suite — catalog schema, runner CLI, CI integration, adding new tests |
 | [IaC outputs reference](docs/iac-outputs.md) | What each IaC output is, and where it's consumed by shell scripts, azd, and GitHub Actions |
 
 ---
