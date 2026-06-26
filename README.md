@@ -179,7 +179,7 @@ azd deploy
 
 By default, the script creates both a new image-based version and a new source-code version. Passing `--no-image-agent` skips Docker and lets Foundry build from the uploaded source-code zip. For more substantial changes — adding tools, swapping the model client, or switching protocols — see the [Agent Framework documentation](https://github.com/microsoft/agent-framework).
 
-> **Keep the smoke tests in sync.** [`deployment/smoke-tests.json`](deployment/smoke-tests.json) asserts the current agent's persona and behavioural rules (e.g. the Transformers-only refusal phrase, the no-fabrication marker, the continuity disclosure). If you change `instructions=` in [main.py](src/agent-framework/responses/basic/main.py), update the prompts and assertions in `smoke-tests.json` to match — otherwise every deploy will fail Step 8. See [Smoke tests](docs/smoke-tests.md#adding-a-new-test) for the schema.
+> **Keep the smoke tests in sync.** [`deployment/smoke-tests.json`](deployment/smoke-tests.json) asserts the current agent's persona and behavioural rules (e.g. the Transformers-only refusal phrase, the no-fabrication marker, the continuity disclosure). If you change `instructions=` in [main.py](src/agent-framework/responses/basic/main.py), update the prompts and assertions in `smoke-tests.json` to match — otherwise every deploy will fail Step 8. See [Smoke tests](docs/smoke-tests.md#adding-a-new-scenario) for the schema.
 
 ---
 

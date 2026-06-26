@@ -13,7 +13,7 @@ The suite has two jobs:
 1. **Reachability** — confirm the agent's Responses data-plane endpoint accepts requests and returns a well-formed OpenAI-Responses payload (`output_text` or `output[*].content[*].text`).
 2. **System-prompt rule compliance** — confirm the agent obeys the rules declared in [main.py](../src/agent-framework/responses/basic/main.py). The sample agent is a Transformers expert with four numbered rules: off-topic refusal, no fabrication, continuity awareness, and brevity.
 
-Each test is a `(prompt, assertions)` pair. Assertions are **case-insensitive substring checks** on the returned text. Tests run sequentially per agent; passing all six is the deploy contract.
+Each catalog entry is one HTTP step. A **scenario** is what the suite logically validates and can be either single-step (one entry, one prompt) or multi-step (two or three entries chained via threading fields). Assertions on each step are **case-insensitive substring checks** on the returned text. Steps run sequentially per agent; passing every step is the deploy contract. The 9 bundled catalog entries compose into 6 scenarios — 4 single-step rule checks and 2 multi-step threading scenarios.
 
 ---
 
@@ -27,13 +27,13 @@ Each test is a `(prompt, assertions)` pair. Assertions are **case-insensitive su
 
 ---
 
-## Test catalog
+## Catalog
 
-The catalog is a JSON document with one `tests` array. Each entry has the following shape:
+The catalog is a JSON document with one `tests` array. Each entry is one **step**. Each entry has the following shape:
 
 ```json
 {
-  "id": "string — unique test name",
+  "id": "string — unique step name",
   "description": "string — human-readable purpose",
   "prompt": "string — the message sent to the agent",
   "assertions": {
@@ -43,7 +43,9 @@ The catalog is a JSON document with one `tests` array. Each entry has the follow
     "contains_none": ["...", "..."]  // optional, none may match
   },
   "save_response_id_as":      "string — optional, store response.id under this key",
-  "use_previous_response_id": "string — optional, send previous_response_id from the named key"
+  "use_previous_response_id": "string — optional, send previous_response_id from the named key",
+  "create_conversation_as":   "string — optional, setup-only step that POSTs to /conversations and stores the new conversation id under this key (no prompt or assertions)",
+  "use_conversation":         "string — optional, send conversation: <id> from the named key"
 }
 ```
 
@@ -51,7 +53,18 @@ All substring matches are case-insensitive. Assertion keys are evaluated indepen
 
 ### Multi-turn threading
 
-`save_response_id_as` and `use_previous_response_id` provide a per-agent key/value store of response IDs. A test that saves an ID under `"megatron_thread"` can be followed by another test that sends `previous_response_id` from `"megatron_thread"`. The store is reset between agents — agents do not share threading state.
+The Responses protocol offers two ways to thread turns together server-side, and the test catalog supports both. The [Sessions versus conversations](https://learn.microsoft.com/azure/foundry/agents/how-to/manage-hosted-sessions#sessions-versus-conversations) reference is the authoritative comparison; the short version is:
+
+| Mechanism | Catalog fields | What the platform does |
+|---|---|---|
+| `previous_response_id` | `save_response_id_as` → `use_previous_response_id` | Chains each new response to the previous response's id. Each call lands in a **new** sandbox unless you also pass `agent_session_id`. |
+| `conversation` id | `create_conversation_as` → `use_conversation` | The platform stores history under the conversation id, and (per the docs) "a stable `agent_session_id` is automatically associated with the conversation. Subsequent calls reuse the same sandbox without you having to track the session id." |
+
+Both mechanisms produce the same threaded-context behavior at the model level. The `conversation` path adds value when an agent needs **stable sandbox state** across turns (uploaded files, `$HOME`); the bundled reference agent doesn't, so the `conversation_*` steps exercise the platform plumbing as a regression guard rather than to retain sandbox state.
+
+#### By `previous_response_id`
+
+`save_response_id_as` and `use_previous_response_id` provide a per-agent key/value store of response ids. A step that saves an id under `"megatron_thread"` can be followed by another step that sends `previous_response_id` from `"megatron_thread"`. The store is reset between agents — agents do not share threading state.
 
 ```mermaid
 flowchart LR
@@ -62,18 +75,33 @@ flowchart LR
     T2 -- "assertion: contains 'decepticon'" --> OK["✅ context survived"]
 ```
 
-### Current test cases
+#### By `conversation` id
 
-The six bundled tests map to system-prompt rules as follows:
+`create_conversation_as` is a **setup-only step** — it has no `prompt` and no `assertions`. The runner POSTs to the [Create conversation REST endpoint](https://learn.microsoft.com/rest/api/microsoft-foundry/aiproject#conversations) (`POST .../endpoint/protocols/openai/conversations`) and stores the returned id under the named key. Later steps reference that key via `use_conversation`, which causes the runner to send `conversation: <id>` in the Responses request body instead of `previous_response_id`. As with response-id threading, the conversation store is per-agent.
 
-| ID | Rule covered | Asserts |
-|---|---|---|
-| `basic_response` | (none — reachability) | Reply contains `optimus` or `prime` |
-| `thread_turn_1` | (none — primes the thread) | Reply contains `megatron`, saves response ID |
-| `thread_turn_2` | Threading works | Reply to "What faction does he lead?" contains `decepticon` (only correct if context survived) |
-| `offtopic_refusal` | Rule 1 — off-topic refusal | Reply contains `only answer questions about transformers` and does **not** contain `paris` |
-| `no_hallucination` | Rule 2 — no fabrication | Reply contains an honest-rejection marker (`i don't know`, `not certain`, `no such`, `no storyline`, `does not`, `doesn't`, `did not`, `didn't`, `never happens`, …) |
-| `continuity_aware` | Rule 3 — continuity disclosure | Reply contains `continuity`, `depends`, `differs`, `varies`, … |
+```mermaid
+flowchart LR
+    C["conversation_create<br/>setup: POST /conversations"]
+    C -- "create_conversation_as: starscream_convo" --> S["per-agent store<br/>{starscream_convo: conv-abc}"]
+    T1["conversation_turn_1<br/>prompt: Who is Starscream?"]
+    T2["conversation_turn_2<br/>prompt: Who does he serve?"]
+    S -- "use_conversation: starscream_convo<br/>→ conversation: conv-abc" --> T1
+    S -- "use_conversation: starscream_convo<br/>→ conversation: conv-abc" --> T2
+    T2 -- "assertion: contains 'megatron' or 'decepticon'" --> OK["✅ platform replayed history"]
+```
+
+### Test scenarios
+
+The 9 catalog entries compose into 6 scenarios. Single-step scenarios have one row in the table; multi-step scenarios list every step in execution order.
+
+| # | Scenario | Steps (in order) | Asserts |
+|---|---|---|---|
+| 1 | Reachability | `basic_response` | Reply contains `optimus` or `prime` |
+| 2 | Off-topic refusal (Rule 1) | `offtopic_refusal` | Reply contains `only answer questions about transformers` and does **not** contain `paris` |
+| 3 | No fabrication (Rule 2) | `no_hallucination` | Reply contains an honest-rejection marker (`i don't know`, `not certain`, `no such`, `no storyline`, `does not`, `doesn't`, `did not`, `didn't`, `never happens`, …) |
+| 4 | Continuity disclosure (Rule 3) | `continuity_aware` | Reply contains `continuity`, `depends`, `differs`, `varies`, … |
+| 5 | Multi-turn threading via `previous_response_id` | `thread_turn_1` → `thread_turn_2` | Step 1 reply contains `megatron` and saves the response id; step 2 reply to "What faction does he lead?" contains `decepticon` (only correct if context survived) |
+| 6 | Multi-turn threading via `conversation` id + history replay | `conversation_create` → `conversation_turn_1` → `conversation_turn_2` | Step 1 creates a conversation resource (`POST /conversations`); step 2 reply contains `starscream`; step 3 reply to "Who does he serve?" contains `megatron` or `decepticon` (only correct if the platform replayed step 2 under the same conversation id) |
 
 Rule 4 (brevity) is intentionally not asserted — length-based assertions tend to be flaky across model versions.
 
@@ -93,7 +121,7 @@ smoke-tests.py
   --timeout SECONDS              (optional) Per-request timeout (default: 120)
 ```
 
-Each `--agent-name` runs the full catalog against that agent. Per-agent results are summarised at the end. Exit code is **0** when every test passes for every agent, **1** if any test failed, **2** for runner errors (missing tests file, token acquisition failure).
+Each `--agent-name` runs the full catalog against that agent. Per-agent results are summarised at the end. Counts are at the **step** granularity (e.g. `9/9 passed`); see [Test scenarios](#test-scenarios) for how steps group into scenarios. Exit code is **0** when every step passes for every agent, **1** if any step failed, **2** for runner errors (missing tests file, token acquisition failure).
 
 ### Example
 
@@ -179,14 +207,14 @@ The composite action assumes the caller has already run `actions/checkout@v6` (s
 
 ---
 
-## Adding a new test
+## Adding a new scenario
 
-1. Add a new entry to the `tests` array in [smoke-tests.json](../deployment/smoke-tests.json). Pick a unique `id`.
-2. Keep assertions **broad enough to cover any reasonable phrasing** the agent might use. The original `no_hallucination` test only matched `does not happen` / `did not happen`; the agent answered with `does not marry` and `no storyline` and the test failed. Broadening `contains_any` to include `does not`, `doesn't`, `no storyline`, etc. fixed it.
-3. Run the runner locally against your deployed agent (see [Standalone](#standalone)) until 6/6 (or N/N) passes.
+1. Add one or more entries to the `tests` array in [smoke-tests.json](../deployment/smoke-tests.json) — one entry per HTTP step. Single-step scenarios are a single entry; multi-step scenarios chain entries via `save_response_id_as` → `use_previous_response_id` or `create_conversation_as` → `use_conversation`. Pick a unique `id` for each step.
+2. Keep assertions **broad enough to cover any reasonable phrasing** the agent might use. The original `no_hallucination` step only matched `does not happen` / `did not happen`; the agent answered with `does not marry` and `no storyline` and the step failed. Broadening `contains_any` to include `does not`, `doesn't`, `no storyline`, etc. fixed it.
+3. Run the runner locally against your deployed agent (see [Standalone](#standalone)) until N/N passes.
 4. Commit. CI will pick up the change automatically — the runner reads the catalog at runtime from the checked-out repo.
 
-To assert HTTP failure instead of a 200, set `"assertions": {"status": 4xx}`. To pin negative semantics, combine `contains_any` (must include an honest marker) with `contains_none` (must not include the off-topic answer), as the `offtopic_refusal` test does.
+To assert HTTP failure instead of a 200, set `"assertions": {"status": 4xx}`. To pin negative semantics, combine `contains_any` (must include an honest marker) with `contains_none` (must not include the off-topic answer), as the `offtopic_refusal` scenario does.
 
 ---
 

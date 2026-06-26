@@ -1,12 +1,12 @@
 {
-  "_comment": "Smoke tests for the Transformers-expert hosted agent. Each test POSTs to the Responses data-plane endpoint and asserts case-insensitive substring matches on the response text. Tests run in order per agent; tests with `use_previous_response_id` reference an id saved earlier via `save_response_id_as` (per-agent scope).",
+  "_comment": "Smoke tests for the Transformers-expert hosted agent. Each test POSTs to the Responses data-plane endpoint and asserts case-insensitive substring matches on the response text. Tests run in order per agent. Threading: tests with `use_previous_response_id` reference an id saved earlier via `save_response_id_as`; tests with `use_conversation` reference a conversation id created earlier via `create_conversation_as` (POST /conversations). Both keys are per-agent scope.",
   "tests": [
     {
       "id": "basic_response",
       "description": "Agent responds at all and answers in-domain.",
       "prompt": "Who is Optimus Prime?",
       "assertions": {
-        "contains_any": ["optimus", "prime"]
+        "contains_any": ["optimus", "prime", "autobot"]
       }
     },
     {
@@ -25,6 +25,30 @@
       "use_previous_response_id": "megatron_thread",
       "assertions": {
         "contains_any": ["decepticon"]
+      }
+    },
+    ,
+    {
+      "id": "conversation_create",
+      "description": "Create a Responses-protocol conversation resource; subsequent turns thread via the conversation id instead of previous_response_id.",
+      "create_conversation_as": "starscream_convo"
+    },
+    {
+      "id": "conversation_turn_1",
+      "description": "First turn under a platform-managed conversation; establishes the subject for turn 2.",
+      "prompt": "Who is Starscream?",
+      "use_conversation": "starscream_convo",
+      "assertions": {
+        "contains_any": ["starscream"]
+      }
+    },
+    {
+      "id": "conversation_turn_2",
+      "description": "Second turn under the same conversation id; pronoun 'he' must resolve to Starscream, proving the platform replayed history.",
+      "prompt": "Who does he serve?",
+      "use_conversation": "starscream_convo",
+      "assertions": {
+        "contains_any": ["megatron", "decepticon"]
       }
     },
     {
