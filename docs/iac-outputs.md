@@ -15,7 +15,7 @@ If you add or remove an output, mirror the change in both IaC stacks and update 
 | `AZURE_AI_PROJECT_ID` | `/subscriptions/…/projects/ai-project` | Full project resource ID. Used as `--scope` for the `az role assignment create` that grants Foundry Project Manager. |
 | `AZURE_AI_PROJECT_ENDPOINT` | `https://ai-project.services.ai.azure.com/api/projects/ai-project` | Base URL for the Foundry data plane (`POST {endpoint}/agents/{name}/versions`). Also injected into the running container as `FOUNDRY_PROJECT_ENDPOINT`. |
 | `AZURE_CONTAINER_REGISTRY_ENDPOINT` | `crabc123.azurecr.io` | ACR login server. Used for `az acr login`, the `docker build`/`push` image tag, and the `image` field in the agent version request body. |
-| `AZURE_AI_MODEL_DEPLOYMENT_NAME` | `gpt-4.1-mini` | Model deployment name. Set as `environment_variables.AZURE_AI_MODEL_DEPLOYMENT_NAME` on the agent version. The Foundry runtime does NOT inject this automatically (unlike `FOUNDRY_PROJECT_ENDPOINT`). |
+| `AZURE_AI_MODEL_DEPLOYMENT_NAME` | `gpt-5.4-mini` | Model deployment name. Set as `environment_variables.AZURE_AI_MODEL_DEPLOYMENT_NAME` on the agent version. The Foundry runtime does NOT inject this automatically (unlike `FOUNDRY_PROJECT_ENDPOINT`). |
 
 ---
 

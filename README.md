@@ -179,7 +179,7 @@ For iterating on agent logic without a full cloud deployment:
 1. Create a `.env` file in `src/agent-framework/responses/basic/`:
    ```
    FOUNDRY_PROJECT_ENDPOINT=https://<your-project>.services.ai.azure.com/api/projects/<project>
-   AZURE_AI_MODEL_DEPLOYMENT_NAME=gpt-4.1-mini
+   AZURE_AI_MODEL_DEPLOYMENT_NAME=gpt-5.4-mini
    ```
 
 2. Install dependencies:
