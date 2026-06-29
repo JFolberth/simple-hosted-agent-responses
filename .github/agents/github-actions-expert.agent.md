@@ -31,6 +31,7 @@ Skip the plan step only when the user explicitly says "go ahead", "just do it", 
 - The calling job does `azure/login@v3` before invoking any action that uses the Azure CLI — keep actions auth-strategy-agnostic
 - For readable multi-line shell logic, use `jq` for JSON construction (pre-installed on `ubuntu-latest`) — never use unindented `python3 -c "..."` multi-line strings inside YAML literal blocks (they break the YAML parser at column 0)
 - If Python logic is needed, use a one-liner or write to a helper `.py` file only when complexity justifies it
+- No hardcoded repo-relative file or directory paths inside an action's `run:` script. Any path the action reads, writes, or executes must be declared as an `input:` with a sensible default (typically the current canonical location) and consumed via an `env:` var. This keeps actions reusable when callers reorganize the repo and makes every dependency the action has explicit at the call site.
 
 ### Reusable Workflow Conventions
 - Declare `on: workflow_call:` only — no `push:` / `pull_request:` triggers on workflows always called from another workflow

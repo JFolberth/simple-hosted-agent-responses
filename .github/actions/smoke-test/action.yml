@@ -18,6 +18,10 @@ inputs:
     description: Path to the smoke-tests JSON catalog, relative to the repo root
     required: false
     default: 'deployment/smoke-tests.json'
+  script_path:
+    description: Path to the smoke-tests runner script, relative to the repo root
+    required: false
+    default: 'deployment/smoke-tests.py'
   timeout:
     description: Per-request timeout in seconds (covers cold-start)
     required: false
@@ -32,9 +36,10 @@ runs:
         PROJECT_ENDPOINT: ${{ inputs.project_endpoint }}
         AGENT_NAME: ${{ inputs.agent_name }}
         TESTS_FILE: ${{ inputs.tests_file }}
+        SCRIPT_PATH: ${{ inputs.script_path }}
         TIMEOUT: ${{ inputs.timeout }}
       run: |
-        python3 deployment/smoke-tests.py \
+        python3 "$SCRIPT_PATH" \
           --project-endpoint "$PROJECT_ENDPOINT" \
           --agent-name "$AGENT_NAME" \
           --tests-file "$TESTS_FILE" \
