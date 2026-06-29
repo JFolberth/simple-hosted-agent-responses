@@ -31,6 +31,13 @@ DATA_PLANE_SCOPE = "https://ai.azure.com/"
 # without a stable redirect. Bump in lockstep with the deploy scripts.
 API_VERSION = "2025-11-15-preview"
 
+# Smart quotes -> ASCII so substring matches survive typographic rendering.
+_PUNCT_FOLD = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"'})
+
+
+def _ascii_fold(s: str) -> str:
+    return s.translate(_PUNCT_FOLD)
+
 
 def acquire_token() -> str:
     # Two paths, in priority order:
@@ -53,9 +60,11 @@ def extract_text(payload: dict[str, Any]) -> str:
     """Pull the response text out of an OpenAI-Responses-shaped payload."""
     # The Responses API can return text two ways. Prefer the flat convenience
     # field; fall back to walking the structured `output[*].content[*]` blocks.
-    # `or []` guards against the keys being present but explicitly None.
-    if isinstance(payload.get("output_text"), str):
-        return payload["output_text"]
+    # An empty string in `output_text` is treated as missing so the structured
+    # walk can still find the real text (some model responses populate only one).
+    output_text = payload.get("output_text")
+    if isinstance(output_text, str) and output_text:
+        return output_text
     parts: list[str] = []
     for item in payload.get("output", []) or []:
         for content in item.get("content", []) or []:
@@ -112,22 +121,24 @@ def check_assertions(text: str, assertions: dict[str, Any]) -> list[str]:
     # next failure. All matches are case-insensitive substring checks;
     # missing assertion keys are skipped, not failed.
     failures: list[str] = []
-    lower = text.lower()
+    # Fold typographic punctuation to ASCII so smart quotes/apostrophes from
+    # the model (e.g. "don’t") still match catalog entries written with ASCII.
+    lower = _ascii_fold(text).lower()
 
     # contains_any: at least one of these substrings must appear
     any_required = assertions.get("contains_any") or []
-    if any_required and not any(s.lower() in lower for s in any_required):
+    if any_required and not any(_ascii_fold(s).lower() in lower for s in any_required):
         failures.append(f"contains_any: none of {any_required!r} found")
 
     # contains_all: every one of these substrings must appear
     all_required = assertions.get("contains_all") or []
-    missing = [s for s in all_required if s.lower() not in lower]
+    missing = [s for s in all_required if _ascii_fold(s).lower() not in lower]
     if missing:
         failures.append(f"contains_all: missing {missing!r}")
 
     # contains_none: none of these substrings may appear
     forbidden = assertions.get("contains_none") or []
-    present = [s for s in forbidden if s.lower() in lower]
+    present = [s for s in forbidden if _ascii_fold(s).lower() in lower]
     if present:
         failures.append(f"contains_none: forbidden {present!r} present")
 
@@ -177,6 +188,13 @@ def run_agent(project_endpoint: str, agent_name: str, tests: list[dict[str, Any]
             preview = text[:300].replace("\n", " ")
             print(f"  FAIL  {tid}: {'; '.join(failures)}")
             print(f"        response: {preview}")
+            # Empty text after a 200 OK is ambiguous — either the model returned
+            # nothing or extract_text missed the shape. Dump the payload skeleton
+            # so the next run is debuggable without re-instrumenting the script.
+            if not text:
+                raw_preview = raw[:500].replace("\n", " ")
+                print(f"        payload keys: {sorted(payload.keys())}")
+                print(f"        raw body:     {raw_preview}")
             continue
 
         # Capture the response id for use by a later turn. Failing when
