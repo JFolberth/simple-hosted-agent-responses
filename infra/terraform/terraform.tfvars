@@ -19,7 +19,7 @@ deployments = [
       version = "2026-03-17"
     }
     sku = {
-      name     = "Standard"
+      name     = "GlobalStandard"
       capacity = 10
     }
   }
