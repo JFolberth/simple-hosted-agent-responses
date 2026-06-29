@@ -15,7 +15,7 @@ param deployments = [
     }
     sku: {
       name: 'GlobalStandard'
-      capacity: 10
+      capacity: 50
     }
   }
 ]
