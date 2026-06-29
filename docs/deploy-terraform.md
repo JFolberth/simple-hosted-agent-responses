@@ -35,7 +35,7 @@ deployments = [
       name    = "gpt-5.4-mini"
       version = "2026-03-17"
     }
-    sku = { name = "Standard", capacity = 10 }
+    sku = { name = "GlobalStandard", capacity = 10 }
   }
 ]
 ```
