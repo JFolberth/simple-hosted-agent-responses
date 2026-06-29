@@ -77,9 +77,11 @@ def extract_text(payload: dict[str, Any]) -> str:
 
 
 def post_response(project_endpoint: str, agent_name: str, token: str, prompt: str,
-                  previous_response_id: str | None, timeout: float) -> tuple[int, dict[str, Any], str]:
-    # The Responses data-plane URL. `previous_response_id` threads turns
-    # together server-side — omitting it starts a fresh conversation.
+                  previous_response_id: str | None, conversation_id: str | None,
+                  timeout: float) -> tuple[int, dict[str, Any], str]:
+    # The Responses data-plane URL. Threading is either via
+    # `previous_response_id` (chain by id) or `conversation` (bind to a
+    # platform-managed conversation resource). Omit both for a fresh start.
     url = (
         f"{project_endpoint.rstrip('/')}/agents/{agent_name}"
         f"/endpoint/protocols/openai/responses?api-version={API_VERSION}"
@@ -87,6 +89,8 @@ def post_response(project_endpoint: str, agent_name: str, token: str, prompt: st
     body: dict[str, Any] = {"input": prompt}
     if previous_response_id:
         body["previous_response_id"] = previous_response_id
+    if conversation_id:
+        body["conversation"] = conversation_id
     req = urllib.request.Request(
         url,
         data=json.dumps(body).encode("utf-8"),
@@ -112,6 +116,35 @@ def post_response(project_endpoint: str, agent_name: str, token: str, prompt: st
             return e.code, json.loads(raw), raw
         except json.JSONDecodeError:
             return e.code, {}, raw
+
+
+def create_conversation(project_endpoint: str, agent_name: str, token: str,
+                        timeout: float) -> str:
+    """Create a Responses-protocol conversation under the agent. Returns its id."""
+    # Hosted-agent-scoped conversations endpoint. Empty body is valid — both
+    # `items` and `metadata` are optional per the OpenAI conversation schema.
+    # Used instead of `previous_response_id` when the test needs a stable
+    # conversation resource (which also auto-binds a stable agent_session_id
+    # for future sandbox-state work).
+    url = (
+        f"{project_endpoint.rstrip('/')}/agents/{agent_name}"
+        f"/endpoint/protocols/openai/conversations?api-version={API_VERSION}"
+    )
+    req = urllib.request.Request(
+        url,
+        data=b"{}",
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - controlled URL
+        payload = json.loads(resp.read().decode("utf-8"))
+    cid = payload.get("id")
+    if not cid:
+        raise RuntimeError(f"create conversation: response had no id field: {payload!r}")
+    return cid
 
 
 def check_assertions(text: str, assertions: dict[str, Any]) -> list[str]:
@@ -149,13 +182,32 @@ def run_agent(project_endpoint: str, agent_name: str, tests: list[dict[str, Any]
               token: str, timeout: float) -> tuple[int, int]:
     """Run all tests against one agent. Returns (passed, total)."""
     print(f"\n--- Agent: {agent_name} ---")
-    # response_ids is reset per agent so the same thread key used by 
-    # two agents doesn't cross-contaminate —
-    # each agent has its own server-side conversation.
+    # response_ids and conversations are reset per agent so the same key used
+    # by two agents doesn't cross-contaminate — each agent has its own
+    # server-side conversation and sandbox.
     response_ids: dict[str, str] = {}
+    conversations: dict[str, str] = {}
     passed = 0
     for test in tests:
         tid = test["id"]
+
+        # Setup-only step: create a conversation resource and store its id
+        # for later turns to reference via `use_conversation`. No prompt,
+        # no assertions — just exercises POST /conversations.
+        create_key = test.get("create_conversation_as")
+        if create_key:
+            try:
+                conversations[create_key] = create_conversation(
+                    project_endpoint, agent_name, token, timeout,
+                )
+            except urllib.error.HTTPError as e:
+                preview = e.read().decode("utf-8", errors="replace")[:300].replace("\n", " ")
+                print(f"  FAIL  {tid}: create_conversation HTTP {e.code} — {preview}")
+                continue
+            passed += 1
+            print(f"  PASS  {tid}")
+            continue
+
         prompt = test["prompt"]
 
         # Resolve a stored previous_response_id if this test continues a
@@ -167,8 +219,16 @@ def run_agent(project_endpoint: str, agent_name: str, tests: list[dict[str, Any]
             print(f"  FAIL  {tid}: previous_response_id key {prev_key!r} not set by an earlier test")
             continue
 
+        # Same pattern for conversation: resolve a stored conversation id if
+        # this test threads via `conversation` instead of `previous_response_id`.
+        conv_key = test.get("use_conversation")
+        conv_id = conversations.get(conv_key) if conv_key else None
+        if conv_key and not conv_id:
+            print(f"  FAIL  {tid}: conversation key {conv_key!r} not set by an earlier test")
+            continue
+
         status, payload, raw = post_response(
-            project_endpoint, agent_name, token, prompt, prev_id, timeout,
+            project_endpoint, agent_name, token, prompt, prev_id, conv_id, timeout,
         )
 
         # Status assertion (default 200). A test can override with
