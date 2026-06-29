@@ -24,7 +24,7 @@ services:
                     version: "2026-03-17"
                   name: gpt-5.4-mini
                   sku:
-                    capacity: 10
+                    capacity: 50
                     name: GlobalStandard
             startupCommand: python main.py
 
