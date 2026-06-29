@@ -179,6 +179,29 @@ The Foundry runtime injects these automatically at container start — do not se
 - Role assignment resource names use `uuidv5("url", "${scope_id}/${discriminator}/${role_short_name}")` for determinism.
 - Configure `tfvars` in `infra/terraform/terraform.tfvars` (gitignored for sensitive values).
 
+### IaC preflight validation — required before commit
+Any change to model deployments, SKUs, capacity, regions, API versions, Terraform provider versions, or resource type definitions must be validated against the live Azure control plane before the commit lands. Schema parsers (`az bicep build`, `terraform validate`) do **not** catch SKU/region/model availability errors — only the deployment preflight does.
+
+| Change type | Required check (Bicep) | Required check (Terraform) |
+|---|---|---|
+| Model name / version / SKU / capacity / region | `az deployment sub what-if --location <region> --template-file infra/bicep/main.bicep --parameters infra/bicep/main.bicepparam` | `cd infra/terraform && terraform plan -var-file=terraform.tfvars` |
+| Provider / API version bump | same as above | same as above (also re-run `terraform init -upgrade`) |
+| New resource type, scope change, RBAC role addition | same as above | same as above |
+
+The check must return `"status": "Succeeded"` (Bicep what-if) or a non-error plan (Terraform). If it surfaces `InvalidResourceProperties`, `SkuNotAvailable`, `LocationNotAvailable`, or similar — fix the inputs and re-run before committing. For SKU-availability errors specifically, use `az cognitiveservices model list --location <region> --query "[?model.name=='<model>'].model.skus[].name"` to enumerate the supported SKUs in that region.
+
+### Smoke-test validation — required before commit
+Any change to `deployment/smoke-tests.py` or `deployment/smoke-tests.json` must be exercised against a live deployed agent before the commit lands. `python3 -c "import ..."` parsing of the script and offline unit checks miss real failure modes: payload-shape drift, model-specific text quirks (smart quotes, refusal phrasing), conversation/threading edges, and token-scope mistakes. Re-run end-to-end:
+
+```bash
+# Pull project endpoint + agent name from the live IaC state, then run the catalog.
+PROJECT_ENDPOINT=$(terraform -chdir=infra/terraform output -raw AZURE_AI_PROJECT_ENDPOINT)   # or `az deployment sub show` for Bicep
+AGENT=agent-framework-agent-basic-responses
+python3 deployment/smoke-tests.py --project-endpoint "$PROJECT_ENDPOINT" --agent-name "$AGENT"
+```
+
+The run must report `Summary: N/N passed` (exit 0). If a test fails, fix the catalog or runner and re-run — do not commit a smoke-tests change that has not produced a clean local pass against a real agent.
+
 ### GitHub Actions — minimum versions
 Use the major version tag (e.g. `@v6`) which automatically picks up the latest patch release. The table below shows the **minimum** required major version — do not use anything older. If a newer major version is available, update both the workflows and this table.
 
@@ -214,6 +237,8 @@ Apply the **Don't Repeat Yourself** principle to GitHub Actions. When the same l
 - Existing reusable workflows: `build.yml`, `deploy-bicep.yml`, `deploy-terraform.yml`.
 
 - Do not use `az cognitiveservices agent create` — it calls a broken start operation for hosted agents.
+- Do not commit a change to model deployments, SKUs, capacity, regions, API versions, Terraform provider versions, or resource type definitions without first running the Bicep what-if (`az deployment sub what-if`) and/or `terraform plan` against the live Azure control plane. `az bicep build` and `terraform validate` do not catch SKU/region/model availability errors — only preflight does. See the "IaC preflight validation" section.
+- Do not commit a change to `deployment/smoke-tests.py` or `deployment/smoke-tests.json` without first running the runner end-to-end against a live deployed agent and confirming `Summary: N/N passed`. Offline parse/unit checks miss payload-shape drift and model-specific text quirks. See the "Smoke-test validation" section.
 - Do not build Docker images without `--platform linux/amd64` on Apple Silicon.
 - Do not add the `cognitiveservices` Azure CLI extension as a prerequisite — it is not used.
 - Do not use `azurerm` or `hashicorp/azapi` as the Terraform provider source — use `Azure/azapi`.

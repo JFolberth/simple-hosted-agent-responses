@@ -6,6 +6,7 @@ on:
       - main
     paths-ignore:
       - '**/*.md'
+      - 'deployment/**'
   workflow_call:
     outputs:
       image_tag:

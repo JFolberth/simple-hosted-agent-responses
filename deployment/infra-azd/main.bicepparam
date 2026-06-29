@@ -19,15 +19,15 @@ param aiFoundryProjectName  = readEnvironmentVariable('AZURE_AI_PROJECT_NAME', '
 // The first entry is used as AZURE_AI_MODEL_DEPLOYMENT_NAME for the agent.
 param deployments = [
   {
-    name: 'gpt-4.1-mini'
+    name: 'gpt-5.4-mini'
     model: {
       format: 'OpenAI'
-      name: 'gpt-4.1-mini'
-      version: '2025-04-14'
+      name: 'gpt-5.4-mini'
+      version: '2026-03-17'
     }
     sku: {
-      name: 'Standard'
-      capacity: 10
+      name: 'GlobalStandard'
+      capacity: 50
     }
   }
 ]
