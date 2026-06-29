@@ -25,7 +25,7 @@ services:
                   name: gpt-5.4-mini
                   sku:
                     capacity: 10
-                    name: Standard
+                    name: GlobalStandard
             startupCommand: python main.py
 
 hooks:
