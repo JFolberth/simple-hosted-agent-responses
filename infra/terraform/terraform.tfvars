@@ -12,11 +12,11 @@ ai_foundry_project_name = "ai-project-tf"
 
 deployments = [
   {
-    name = "gpt-4.1-mini"
+    name = "gpt-5.4-mini"
     model = {
       format  = "OpenAI"
-      name    = "gpt-4.1-mini"
-      version = "2025-04-14"
+      name    = "gpt-5.4-mini"
+      version = "2026-03-17"
     }
     sku = {
       name     = "Standard"
