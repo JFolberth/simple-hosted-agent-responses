@@ -112,7 +112,7 @@ POSTs to the Foundry data plane to register a new hosted agent version:
 POST {projectEndpoint}/agents/{name}/versions?api-version=2025-11-15-preview
 ```
 
-The request body specifies `kind: hosted`, the container image reference, CPU/memory allocation (`0.25` CPU, `0.5Gi`), the Responses protocol version (`1.0.0`), and the `AZURE_AI_MODEL_DEPLOYMENT_NAME` environment variable. The platform pulls the image and provisions a micro VM automatically.
+The request body specifies `kind: hosted`, the container image reference, CPU/memory allocation (`0.25` CPU, `0.5Gi`), the Responses protocol version (`2.0.0`), and the `AZURE_AI_MODEL_DEPLOYMENT_NAME` environment variable. The platform pulls the image and provisions a micro VM automatically.
 
 > **Auth:** The script acquires a token scoped to `https://ai.azure.com/` via `az account get-access-token`. `az rest` is **not** used — it does not reliably acquire the correct audience token for this endpoint.
 >

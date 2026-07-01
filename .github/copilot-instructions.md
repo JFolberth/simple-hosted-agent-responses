@@ -118,7 +118,7 @@ Required fields in the request body:
 {
   "definition": {
     "kind": "hosted",
-    "container_protocol_versions": [{"protocol": "responses", "version": "1.0.0"}],
+    "container_protocol_versions": [{"protocol": "responses", "version": "2.0.0"}],
     "image": "<acr>/<name>:<tag>",
     "cpu": "0.25",
     "memory": "0.5Gi",
@@ -135,7 +135,7 @@ Source-code deployments also POST to `POST {projectEndpoint}/agents/{name}/versi
 {
   "definition": {
     "kind": "hosted",
-    "protocol_versions": [{"protocol": "responses", "version": "1.0.0"}],
+    "protocol_versions": [{"protocol": "responses", "version": "2.0.0"}],
     "cpu": "0.25",
     "memory": "0.5Gi",
     "environment_variables": {"AZURE_AI_MODEL_DEPLOYMENT_NAME": "<model>"},
