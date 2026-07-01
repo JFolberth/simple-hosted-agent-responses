@@ -47,7 +47,7 @@ The source-code action creates a temporary metadata file because the preview API
 The current action in this repo exposes `cpu`, `memory`, `runtime`, `entry_point`, and `max_polling_seconds` as optional inputs. With the current defaults, the metadata is:
 
 - `kind: hosted`
-- `protocol_versions: [{ protocol: responses, version: 1.0.0 }]`
+- `protocol_versions: [{ protocol: responses, version: 2.0.0 }]`
 - `cpu: 0.25`
 - `memory: 0.5Gi`
 - `code_configuration.runtime: python_3_13`

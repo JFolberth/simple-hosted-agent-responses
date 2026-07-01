@@ -54,7 +54,7 @@ runs:
           '{
             definition: {
               kind: "hosted",
-              container_protocol_versions: [{protocol: "responses", version: "1.0.0"}],
+              container_protocol_versions: [{protocol: "responses", version: "2.0.0"}],
               cpu: $cpu,
               memory: $memory,
               environment_variables: {AZURE_AI_MODEL_DEPLOYMENT_NAME: $model},
