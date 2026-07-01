@@ -14,12 +14,14 @@
 #   Only source-code-based agent:    ./deployment/deploy-terraform.sh --no-image-agent
 #   Skip RBAC grant + 120s wait:     ./deployment/deploy-terraform.sh --skip-rbac
 #   Skip post-deploy smoke tests:    ./deployment/deploy-terraform.sh --no-smoke-test
+#   Skip agent evaluation gate:      ./deployment/deploy-terraform.sh --no-eval
 #
 # Environment variables (override defaults; CLI flags override env):
 #   IMAGE_BASED_AGENT=true|false           default: true
 #   SOURCE_CODE_BASED_AGENT=true|false     default: true
 #   SKIP_RBAC=true|false                   default: false
 #   SMOKE_TEST=true|false                  default: true
+#   EVAL=true|false                        default: true
 
 set -euo pipefail
 
@@ -56,6 +58,7 @@ SOURCE_CODE_MAX_POLLING_SECONDS=600
 SKIP_INFRA=false
 SKIP_RBAC="${SKIP_RBAC:-false}"
 SMOKE_TEST="${SMOKE_TEST:-true}"
+EVAL="${EVAL:-true}"
 for arg in "$@"; do
   case $arg in
     --skip-infra) SKIP_INFRA=true ;;
@@ -63,6 +66,7 @@ for arg in "$@"; do
     --no-image-agent) IMAGE_BASED_AGENT=false ;;
     --no-source-code-agent) SOURCE_CODE_BASED_AGENT=false ;;
     --no-smoke-test) SMOKE_TEST=false ;;
+    --no-eval) EVAL=false ;;
     *) echo "Unknown argument: $arg"; exit 1 ;;
   esac
 done
@@ -325,6 +329,93 @@ else
     SMOKE_ARGS+=(--agent-name "${SOURCE_CODE_AGENT_NAME}")
   fi
   FOUNDRY_TOKEN="${FOUNDRY_TOKEN}" python3 "${SCRIPT_DIR}/smoke-tests.py" "${SMOKE_ARGS[@]}"
+fi
+
+# ──────────────────────────────────────────────────────────────────────────
+# Step 9: Agent evaluation gate
+#
+# Runs microsoft/ai-agent-evals against the agent version we just deployed,
+# comparing to the previous version (if any) via statistical-significance
+# regression detection. Uses the same env-var contract as the GH composite
+# action so local and CI behaviour stay aligned.
+#
+# The GH Action installs its own repo as a Python package and then runs
+# action.py from that checkout (see https://github.com/microsoft/ai-agent-evals/blob/v3-beta/action.yml).
+# We mirror it: clone at v3-beta into a venv and invoke `python action.py`.
+# A venv avoids Debian's PEP 668 restriction on system-Python pip installs.
+#
+# Cost: ~$0.20-$1.00 per run, ~3-6 minutes. Skippable via EVAL=false / --no-eval.
+# ──────────────────────────────────────────────────────────────────────────
+echo "==> Running agent evaluation gate..."
+if [ "$EVAL" != true ]; then
+  echo "    Skipping (EVAL=false / --no-eval)."
+else
+  # Evaluate every deployed agent so consumers get consistent gating whether
+  # they run image-only, source-only, or both. Cost scales linearly: budget
+  # ~$0.20-$1.00 per agent per run.
+  EVAL_TARGETS=()
+  if [ "$IMAGE_BASED_AGENT" = true ]; then
+    EVAL_TARGETS+=("${AGENT_NAME}:${AGENT_VERSION}")
+  fi
+  if [ "$SOURCE_CODE_BASED_AGENT" = true ]; then
+    EVAL_TARGETS+=("${SOURCE_CODE_AGENT_NAME}:${SOURCE_CODE_VERSION}")
+  fi
+
+  # NOTE: on failure we intentionally leave EVAL_WORKDIR on disk for debugging;
+  # `set -e` will exit the script before cleanup.
+  EVAL_WORKDIR=$(mktemp -d)
+  echo "    Cloning microsoft/ai-agent-evals@v3-beta into ${EVAL_WORKDIR}..."
+  git clone --quiet --depth 1 --branch v3-beta \
+    https://github.com/microsoft/ai-agent-evals.git "${EVAL_WORKDIR}/ai-agent-evals"
+  python3 -m venv "${EVAL_WORKDIR}/venv"
+  "${EVAL_WORKDIR}/venv/bin/pip" install --quiet --upgrade pip
+  "${EVAL_WORKDIR}/venv/bin/pip" install --quiet "${EVAL_WORKDIR}/ai-agent-evals"
+
+  for target in "${EVAL_TARGETS[@]}"; do
+    EVAL_AGENT_NAME="${target%%:*}"
+    EVAL_AGENT_VERSION="${target##*:}"
+    echo ""
+    echo "--> Evaluating ${EVAL_AGENT_NAME}:${EVAL_AGENT_VERSION}"
+
+    # Baseline = highest existing version number less than the one we just
+    # deployed. More robust than depending on an `is_default`-style flag whose
+    # name is not stable across the preview API. Empty on first deploy.
+    EVAL_VERSIONS_JSON=$(curl -s -f \
+      "${PROJECT_ENDPOINT}/agents/${EVAL_AGENT_NAME}/versions?api-version=2025-11-15-preview" \
+      -H "Authorization: Bearer ${FOUNDRY_TOKEN}")
+    EVAL_PREV_VERSION=$(echo "${EVAL_VERSIONS_JSON}" | EVAL_AGENT_VERSION="${EVAL_AGENT_VERSION}" python3 -c "
+import json, os, sys
+payload = json.load(sys.stdin)
+data = payload.get('data') or payload.get('value') or []
+new = os.environ['EVAL_AGENT_VERSION']
+others = [v['version'] for v in data if v.get('version') != new]
+try:
+    others.sort(key=lambda x: int(x))
+except (TypeError, ValueError):
+    others.sort()
+print(others[-1] if others else '')
+")
+
+    if [ -n "${EVAL_PREV_VERSION}" ]; then
+      echo "    Baseline version: ${EVAL_PREV_VERSION}"
+      EVAL_AGENT_IDS="${EVAL_AGENT_NAME}:${EVAL_PREV_VERSION},${EVAL_AGENT_NAME}:${EVAL_AGENT_VERSION}"
+      EVAL_BASELINE_AGENT_ID="${EVAL_AGENT_NAME}:${EVAL_PREV_VERSION}"
+    else
+      echo "    No previous version — evaluating new version only (no baseline)."
+      EVAL_AGENT_IDS="${EVAL_AGENT_NAME}:${EVAL_AGENT_VERSION}"
+      EVAL_BASELINE_AGENT_ID=""
+    fi
+
+    AZURE_AI_PROJECT_ENDPOINT="${PROJECT_ENDPOINT}" \
+    DEPLOYMENT_NAME="${MODEL_DEPLOYMENT_NAME}" \
+    DATA_PATH="${REPO_ROOT}/evals/promotion-gate.json" \
+    AGENT_IDS="${EVAL_AGENT_IDS}" \
+    BASELINE_AGENT_ID="${EVAL_BASELINE_AGENT_ID}" \
+      "${EVAL_WORKDIR}/venv/bin/python" "${EVAL_WORKDIR}/ai-agent-evals/action.py"
+  done
+
+  rm -rf "${EVAL_WORKDIR}"
+  echo "    Evaluation complete."
 fi
 
 echo ""
