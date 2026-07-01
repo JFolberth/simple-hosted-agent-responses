@@ -72,7 +72,7 @@ runs:
             description: "Hosted agent deployed from source code",
             definition: {
               kind: "hosted",
-              protocol_versions: [{protocol: "responses", version: "1.0.0"}],
+              protocol_versions: [{protocol: "responses", version: "2.0.0"}],
               cpu: $cpu,
               memory: $memory,
               code_configuration: {
