@@ -86,10 +86,6 @@ Once Step 9 is wired into `deployment/deploy-*.sh`, you can iterate on this data
 # (invocation TBD in Phase 2)
 ```
 
-## Cost
-
-~$0.20–$1.00 per run, 3–6 minutes. 30 rows × ~7 evaluators × 2 versions (new + baseline). Judge-model tokens dominate.
-
 ## Related
 
 - [ai-agent-evals README](https://github.com/microsoft/ai-agent-evals/blob/v3-beta/README.md)

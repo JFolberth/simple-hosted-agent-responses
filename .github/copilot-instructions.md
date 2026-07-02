@@ -161,6 +161,18 @@ The Foundry runtime injects these automatically at container start — do not se
 
 `AZURE_AI_MODEL_DEPLOYMENT_NAME` is NOT injected automatically — it must be set explicitly in the agent version request body and is present in `agent.yaml`.
 
+### Evaluations
+
+The agent evaluation gate uses [`microsoft/ai-agent-evals@v3-beta`](https://github.com/microsoft/ai-agent-evals). It runs as Step 9 of `deploy-bicep.sh` / `deploy-terraform.sh` and as a step in each parallel deploy job in the CI workflows (`.github/actions/agent-eval`). Both invocations use the same environment-variable contract (`AZURE_AI_PROJECT_ENDPOINT`, `DEPLOYMENT_NAME`, `DATA_PATH`, `AGENT_IDS`, `BASELINE_AGENT_ID`) so local and CI behaviour stay aligned.
+
+- **Dataset:** single JSON file at `evals/promotion-gate.json` in the ai-agent-evals native schema — evaluator list + rows in one file. Do not split into JSONL; ai-agent-evals converts internally at runtime. See [`evals/README.md`](../../evals/README.md) for the editing guide and [`docs/evaluations.md`](../../docs/evaluations.md) for verdict interpretation, cost management, and the CI SP RBAC gotcha.
+- **Baseline auto-selection:** both the local script and the composite action pick the baseline as the *highest existing version number less than the version just deployed* — more robust than depending on an `is_default`-style field whose name is not stable across the preview API.
+- **CI service principal RBAC:** the CI SP needs `Foundry User` (GUID `53ca6127-db72-4b80-b1b0-d745d6d5456d`) at Foundry **project** scope on every project it evaluates. **Nothing in IaC or the workflows grants this today** — it's a manual one-time `az role assignment create` per new project. See [`docs/evaluations.md`](../../docs/evaluations.md#ci-service-principal-rbac--manual-grant-required-per-project) for the exact command. Symptom when missing: `PermissionDenied` for `Microsoft.CognitiveServices/accounts/AIServices/assets/read` inside the `Run ai-agent-evals` step.
+- **Upstream limitations** worth knowing:
+  - The `name` field inside `evals/promotion-gate.json` is ignored — the eval object is always created as `"Agent Evaluation"` (upstream [#72](https://github.com/microsoft/ai-agent-evals/issues/72)).
+  - Every run emits a Node.js 20 deprecation warning from the pinned `actions/setup-python@v5` inside the action (upstream [#74](https://github.com/microsoft/ai-agent-evals/issues/74)). Cosmetic; runner auto-forces Node 24.
+- **Do not** change `evals/promotion-gate.json` without running the full flow end-to-end against a live Foundry project to confirm the evaluator IDs are still valid and the dataset schema still parses. Offline JSON validation catches typos but not evaluator catalog drift.
+
 ---
 
 ## Infrastructure patterns to follow
@@ -294,6 +306,8 @@ Documentation lives in `docs/`. The current files are:
 | `docs/deploy-bicep.md` | Local deployment using Bicep (shell script + azd) |
 | `docs/deploy-terraform.md` | Local deployment using Terraform (shell script + azd) + state management |
 | `docs/github-actions.md` | CI/CD: workflow architecture, OIDC auth, RBAC, secrets/variables, composite actions |
+| `docs/smoke-tests.md` | Post-deploy smoke test suite (Step 8) |
+| `docs/evaluations.md` | Agent evaluation gate (Step 9) — `microsoft/ai-agent-evals@v3-beta` invoked locally and in CI; dataset schema, verdict interpretation, CI service principal RBAC grant |
 
 When adding new documentation:
 - Create a new file in `docs/`

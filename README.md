@@ -126,9 +126,12 @@ See [Deploying with Bicep](docs/deploy-bicep.md#azure-developer-cli-azd) or [Dep
 ./deployment/deploy-bicep.sh --no-source-code-agent  # Image-based agent only
 ./deployment/deploy-bicep.sh --skip-rbac             # Skip RBAC grant + 120s wait when already assigned
 ./deployment/deploy-bicep.sh --no-smoke-test         # Skip the post-deploy smoke test suite
+./deployment/deploy-bicep.sh --no-eval               # Skip the post-deploy agent evaluation gate
 ```
 
 Both scripts run a post-deploy smoke test against every agent they just deployed — the runner POSTs the prompts in [`deployment/smoke-tests.json`](deployment/smoke-tests.json) to each agent's Responses endpoint and asserts the agent's reply matches the expected behaviour. A failure exits the script non-zero. Pass `--no-smoke-test` to skip. See [Smoke tests](docs/smoke-tests.md) for the catalog, schema, and how to extend it.
+
+After smoke tests pass, both scripts run the **agent evaluation gate** — [`microsoft/ai-agent-evals@v3-beta`](https://github.com/microsoft/ai-agent-evals) evaluates the new agent version against its predecessor via Foundry Cloud Evaluation. Rows and evaluators live in [`evals/promotion-gate.json`](evals/promotion-gate.json). Pass `--no-eval` to skip. See [Evaluations](docs/evaluations.md) for the schema, verdict meanings, the one-time CI service principal RBAC grant, and how to manage judge-token cost.
 
 See [Deploying with Bicep](docs/deploy-bicep.md) or [Deploying with Terraform](docs/deploy-terraform.md) for configuration, step-by-step walkthrough, and state management.
 
@@ -243,6 +246,7 @@ Detailed guides for each deployment path and the CI/CD pipeline:
 | [Deploying Source Code](docs/deploy-source-code.md) | ZIP-based hosted-agent deployment using the repository's GitHub Actions workflows |
 | [GitHub Actions CI/CD](docs/github-actions.md) | Workflow architecture, OIDC auth setup, RBAC requirements, secrets/variables reference, composite action internals |
 | [Smoke tests](docs/smoke-tests.md) | Post-deploy smoke test suite — catalog schema, runner CLI, CI integration, adding new tests |
+| [Evaluations](docs/evaluations.md) | Agent evaluation gate — `microsoft/ai-agent-evals@v3-beta` wired into Step 9 of the deploy scripts and the CI pipeline; dataset schema, verdict interpretation, CI SP RBAC grant, cost |
 | [IaC outputs reference](docs/iac-outputs.md) | What each IaC output is, and where it's consumed by shell scripts, azd, and GitHub Actions |
 
 ---

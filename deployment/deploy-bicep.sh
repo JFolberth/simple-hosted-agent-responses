@@ -393,15 +393,16 @@ fi
 # We mirror it: clone at v3-beta into a venv and invoke `python action.py`.
 # A venv avoids Debian's PEP 668 restriction on system-Python pip installs.
 #
-# Cost: ~$0.20-$1.00 per run, ~3-6 minutes. Skippable via EVAL=false / --no-eval.
+# Skippable via EVAL=false / --no-eval. See docs/evaluations.md for how to
+# manage judge-token cost.
 # ──────────────────────────────────────────────────────────────────────────
 echo "==> Running agent evaluation gate..."
 if [ "$EVAL" != true ]; then
   echo "    Skipping (EVAL=false / --no-eval)."
 else
   # Evaluate every deployed agent so consumers get consistent gating whether
-  # they run image-only, source-only, or both. Cost scales linearly: budget
-  # ~$0.20-$1.00 per agent per run.
+  # they run image-only, source-only, or both. Judge-token cost scales linearly
+  # with the number of agents evaluated; see docs/evaluations.md for the levers.
   EVAL_TARGETS=()
   if [ "$IMAGE_BASED_AGENT" = true ]; then
     EVAL_TARGETS+=("${AGENT_NAME}:${AGENT_VERSION}")

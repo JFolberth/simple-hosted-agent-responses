@@ -55,7 +55,7 @@ IMAGE_NAME="agent-framework-agent-basic-responses"      # Container image name (
 
 ## Shell Script
 
-`deployment/deploy-terraform.sh` runs the full deployment from your local machine in eight steps. By default, it deploys both the image-based agent and the source-code agent, then runs a post-deploy smoke test against each.
+`deployment/deploy-terraform.sh` runs the full deployment from your local machine in nine steps. By default, it deploys both the image-based agent and the source-code agent, runs a post-deploy smoke test against each, then runs the agent evaluation gate against each.
 
 ### Usage
 
@@ -77,6 +77,9 @@ IMAGE_NAME="agent-framework-agent-basic-responses"      # Container image name (
 
 # Skip post-deploy smoke tests
 ./deployment/deploy-terraform.sh --no-smoke-test
+
+# Skip the agent evaluation gate
+./deployment/deploy-terraform.sh --no-eval
 ```
 
 > Run from anywhere in the repo. The script resolves the repo root from its own location.
@@ -89,6 +92,7 @@ IMAGE_NAME="agent-framework-agent-basic-responses"      # Container image name (
 | `--no-source-code-agent` | `SOURCE_CODE_BASED_AGENT=false` | `true` | Skip source-code zip creation, multipart upload, and remote-build polling |
 | `--skip-rbac` | `SKIP_RBAC=true` | `false` | Skip the Foundry Project Manager role assignment and the 120-second RBAC propagation wait |
 | `--no-smoke-test` | `SMOKE_TEST=false` | `true` | Skip Step 8 (post-deploy smoke tests). See [Smoke tests](./smoke-tests.md). |
+| `--no-eval` | `EVAL=false` | `true` | Skip Step 9 (agent evaluation gate). See [Evaluations](./evaluations.md). |
 
 CLI flags override the default values. The script exits before deployment if both agent modes resolve to `false`.
 
@@ -133,6 +137,16 @@ When `SMOKE_TEST=true` (default), the script invokes `deployment/smoke-tests.py`
 If `--skip-rbac` was set earlier, the step prints a warning: the runner needs the same Foundry Project Manager grant to hit the data plane, and without it every test will 404.
 
 Pass `--no-smoke-test` or set `SMOKE_TEST=false` to skip. For test catalog details, schema, and how to add tests, see [Smoke tests](./smoke-tests.md).
+
+**Step 9 — Agent evaluation gate**
+
+When `EVAL=true` (default), the script runs [`microsoft/ai-agent-evals@v3-beta`](https://github.com/microsoft/ai-agent-evals) against every agent it just deployed. For each agent, the script fetches all existing versions, picks the highest version number less than the one just created as the **baseline**, then invokes the evaluator with the new version as the treatment. If no previous version exists (first deploy), the evaluator runs on the new version alone — no baseline comparison.
+
+The evaluator uploads [`evals/promotion-gate.json`](../evals/promotion-gate.json) as the dataset, runs each row against both agents in Foundry, and produces a statistical-significance comparison per evaluator. Exit code reflects the gate outcome; the script propagates non-zero via `set -e`.
+
+Under the hood the script clones `microsoft/ai-agent-evals@v3-beta` into a tempdir, creates a Python virtual environment (to avoid Debian's PEP 668 restriction), installs the package into the venv, and invokes `action.py` with the same environment-variable contract the GitHub composite action uses. Local and CI behaviour stay aligned.
+
+Pass `--no-eval` or set `EVAL=false` to skip. For dataset schema, evaluator selection, how to interpret "Inconclusive" results, and the one-time CI service principal RBAC grant required for the equivalent CI step, see [Evaluations](./evaluations.md).
 
 ---
 
@@ -184,6 +198,7 @@ azd deploy
 - azd injects `TF_VAR_environment_name`, `TF_VAR_location`, and `TF_VAR_resource_group_name` automatically. Set `AI_DEPLOYMENTS_LOCATION` to control `TF_VAR_ai_deployments_location`. `terraform.tfvars` is used as a fallback for variables not set by azd.
 - **Remote state with azd:** azd calls `terraform init` internally. If `infra/terraform/backend_override.tf` exists (created by the [remote state opt-in](#remote-state--local-opt-in) setup), Terraform will use it automatically during `azd up`.
 - **Smoke tests:** A `postdeploy` hook (`deployment/scripts/run-smoke-tests.sh`) runs [`deployment/smoke-tests.py`](../deployment/smoke-tests.py) against the agent that `azd deploy` just created. Set `SMOKE_TEST=false` (via `azd env set` or `SMOKE_TEST=false azd up`) to skip. Override the agent name with `AGENT_NAME` if you renamed the service. See [Smoke tests](./smoke-tests.md).
+- **Agent evaluation gate:** Not currently wired into the azd flow — azd runs only the smoke-test hook. Use the shell script (`./deployment/deploy-terraform.sh`) if you need the evaluation gate to run locally. See [Evaluations](./evaluations.md).
 
 ---
 
