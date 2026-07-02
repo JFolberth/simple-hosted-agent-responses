@@ -1,0 +1,79 @@
+name: Agent Evaluation Gate
+description: |
+  Runs microsoft/ai-agent-evals against a newly-created hosted agent version,
+  comparing it to the previous serving version for statistical-significance
+  regression detection. Baseline is auto-selected as the highest existing
+  version number less than agent_version; if none exists (first deploy) the
+  new version is evaluated on its own.
+
+  Contract: caller must have already run actions/checkout@v6 (so
+  ${{ inputs.data_path }} is on disk) and azure/login@v3 (both the baseline
+  lookup and the Azure AI Evaluation SDK use the CLI-cached OIDC credential).
+
+inputs:
+  project_endpoint:
+    description: Foundry project endpoint URL (e.g. https://<account>.services.ai.azure.com/api/projects/<project>)
+    required: true
+  agent_name:
+    description: Name of the hosted agent to evaluate
+    required: true
+  agent_version:
+    description: Version of the agent that was just deployed (candidate for promotion)
+    required: true
+  deployment_name:
+    description: Name of the Azure AI model deployment used as the judge model
+    required: true
+  data_path:
+    description: Path to the ai-agent-evals native JSON data file, relative to the repo root
+    required: false
+    default: 'evals/promotion-gate.json'
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve baseline version
+      id: baseline
+      shell: bash
+      env:
+        PROJECT_ENDPOINT: ${{ inputs.project_endpoint }}
+        AGENT_NAME: ${{ inputs.agent_name }}
+        AGENT_VERSION: ${{ inputs.agent_version }}
+      run: |
+        set -euo pipefail
+        TOKEN=$(az account get-access-token \
+          --resource "https://ai.azure.com/" \
+          --query accessToken -o tsv)
+
+        VERSIONS_JSON=$(curl -fsSL \
+          -H "Authorization: Bearer $TOKEN" \
+          "$PROJECT_ENDPOINT/agents/$AGENT_NAME/versions?api-version=2025-11-15-preview")
+
+        # Baseline = highest existing version number less than the one we just
+        # deployed. Fall back to `value` in case the API is renamed; ignore
+        # non-numeric versions defensively.
+        PREV=$(echo "$VERSIONS_JSON" | jq -r --arg new "$AGENT_VERSION" '
+          [ (.data // .value // [])[].version
+            | select(. != $new)
+            | tonumber?
+          ]
+          | if length == 0 then "" else (max | tostring) end
+        ')
+
+        if [ -n "$PREV" ]; then
+          echo "Baseline version: $PREV"
+          echo "agent_ids=${AGENT_NAME}:${PREV},${AGENT_NAME}:${AGENT_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "baseline_agent_id=${AGENT_NAME}:${PREV}" >> "$GITHUB_OUTPUT"
+        else
+          echo "No previous version — evaluating new version only (no baseline)."
+          echo "agent_ids=${AGENT_NAME}:${AGENT_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "baseline_agent_id=" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Run ai-agent-evals
+      uses: microsoft/ai-agent-evals@v3-beta
+      with:
+        azure-ai-project-endpoint: ${{ inputs.project_endpoint }}
+        deployment-name: ${{ inputs.deployment_name }}
+        data-path: ${{ inputs.data_path }}
+        agent-ids: ${{ steps.baseline.outputs.agent_ids }}
+        baseline-agent-id: ${{ steps.baseline.outputs.baseline_agent_id }}

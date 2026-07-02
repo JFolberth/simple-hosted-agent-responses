@@ -120,6 +120,7 @@ jobs:
           image_tag: ${{ inputs.image_tag }}
 
       - name: Update agent
+        id: update-agent
         uses: ./.github/actions/update-agent
         with:
           project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
@@ -131,6 +132,13 @@ jobs:
         with:
           project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
           agent_name: ${{ inputs.agent_name }}
+      - name: Agent evaluation gate
+        uses: ./.github/actions/agent-eval
+        with:
+          project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
+          agent_name: ${{ inputs.agent_name }}
+          agent_version: ${{ steps.update-agent.outputs.agent_version }}
+          deployment_name: ${{ needs.deploy-iac.outputs.model_deployment_name }}
   # ── Update source-code-based agent ────────────────────────────────────────
   # Uploads the source-code zip artifact (built once in the build workflow)
   # to a separate agent name (typically <agent_name>-src) on the same Foundry
@@ -161,6 +169,7 @@ jobs:
           path: ./.artifacts/source-code
 
       - name: Update agent with source code
+        id: update-agent-source-code
         uses: ./.github/actions/update-agent-source-code
         with:
           project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
@@ -175,3 +184,11 @@ jobs:
         with:
           project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
           agent_name: ${{ inputs.agent_name }}-src
+
+      - name: Agent evaluation gate
+        uses: ./.github/actions/agent-eval
+        with:
+          project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
+          agent_name: ${{ inputs.agent_name }}-src
+          agent_version: ${{ steps.update-agent-source-code.outputs.agent_version }}
+          deployment_name: ${{ needs.deploy-iac.outputs.model_deployment_name }}
