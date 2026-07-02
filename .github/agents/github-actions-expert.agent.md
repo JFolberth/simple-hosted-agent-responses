@@ -27,6 +27,7 @@ Skip the plan step only when the user explicitly says "go ahead", "just do it", 
 ### Composite Action Conventions
 - Folder: `.github/actions/<name>/action.yml` — one action per folder
 - Pass all inputs through `env:` vars inside `run:` steps — never interpolate `${{ inputs.* }}` directly into shell strings (injection risk)
+- Never use `${{ ... }}` expressions inside an action's top-level `name:` or `description:` fields — they're evaluated at load time before any expression context exists; GitHub rejects the file with `Unrecognized named-value`. Only `runs.steps.*` fields support expressions.
 - The calling job does `actions/checkout@v6` **before** invoking any local composite action — the runner needs the repo on disk to resolve `./.github/actions/<name>`
 - The calling job does `azure/login@v3` before invoking any action that uses the Azure CLI — keep actions auth-strategy-agnostic
 - For readable multi-line shell logic, use `jq` for JSON construction (pre-installed on `ubuntu-latest`) — never use unindented `python3 -c "..."` multi-line strings inside YAML literal blocks (they break the YAML parser at column 0)
@@ -101,6 +102,7 @@ for f in [
 - Use `az cognitiveservices agent create` — it calls a broken hosted-agent start operation
 - Duplicate steps across workflow files — extract to a composite action
 - Interpolate `${{ inputs.* }}` directly into shell `run:` scripts — use `env:` mapping
+- Use `${{ ... }}` expressions inside an action's top-level `name:` or `description:` fields — those are metadata evaluated at load time and GitHub rejects the file with `Unrecognized named-value`. Only `runs.steps.*` fields support expressions.
 - Omit `actions/checkout@v6` before a local `uses: ./.github/actions/...` call
 - Use `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` — pinned action versions above are already Node 24 native
 - Write multi-line Python with unindented source inside a YAML `run: |` block
