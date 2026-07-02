@@ -133,7 +133,7 @@ body = {
   "metadata": {"enableVnextExperience": "true"},
   "definition": {
     "kind": "hosted",
-    "container_protocol_versions": [{"protocol": "responses", "version": "1.0.0"}],
+    "container_protocol_versions": [{"protocol": "responses", "version": "2.0.0"}],
     "cpu": "0.25",
     "memory": "0.5Gi",
     "environment_variables": {
