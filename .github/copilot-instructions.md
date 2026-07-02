@@ -227,6 +227,7 @@ Apply the **Don't Repeat Yourself** principle to GitHub Actions. When the same l
 **Composite action conventions:**
 - Create a dedicated folder: `.github/actions/<name>/action.yml`.
 - Pass all inputs via `env:` vars inside `run:` steps — never interpolate `${{ inputs.* }}` directly into shell strings (injection risk).
+- Never use `${{ ... }}` expressions (`inputs.*`, `github.*`, or any named-value) inside an action's top-level `name:` or `description:` fields — these are metadata evaluated at action-load time, before any expression context exists. GitHub rejects the whole action file with `Unrecognized named-value`. Only `runs.steps.*` fields support expressions.
 - No hardcoded repo-relative file or directory paths inside an action's `run:` script. Any path the action reads, writes, or executes must be declared as an `input:` with a sensible default (typically the current canonical location) and consumed via an `env:` var. This keeps actions reusable when callers reorganize the repo and makes every dependency the action has explicit at the call site.
 - The calling job must run `actions/checkout@v6` before invoking any local composite action — the runner needs the repo on disk to resolve `./.github/actions/<name>`.
 - The calling job handles Azure CLI authentication (`azure/login@v3`) before invoking the action; the action assumes an authenticated session. This keeps actions auth-strategy-agnostic.
@@ -237,6 +238,7 @@ Apply the **Don't Repeat Yourself** principle to GitHub Actions. When the same l
 - Pass secrets explicitly or via `secrets: inherit` from the calling workflow.
 - Existing reusable workflows: `build.yml`, `deploy-bicep.yml`, `deploy-terraform.yml`.
 
+- Do not use `${{ ... }}` template expressions inside an action's top-level `name:` or `description:` fields. Those fields are metadata evaluated at action-load time and have no expression context — GitHub rejects the whole action with `Unrecognized named-value` and the calling job fails at 0s with a template validation exception. Only `runs.steps.*` fields (`env:`, `with:`, `if:`, `run:`, per-step `name:`) support expressions.
 - Do not use `az cognitiveservices agent create` — it calls a broken start operation for hosted agents.
 - Do not commit a change to model deployments, SKUs, capacity, regions, API versions, Terraform provider versions, or resource type definitions without first running the Bicep what-if (`az deployment sub what-if`) and/or `terraform plan` against the live Azure control plane. `az bicep build` and `terraform validate` do not catch SKU/region/model availability errors — only preflight does. See the "IaC preflight validation" section.
 - Do not commit a change to `deployment/smoke-tests.py` or `deployment/smoke-tests.json` without first running the runner end-to-end against a live deployed agent and confirming `Summary: N/N passed`. Offline parse/unit checks miss payload-shape drift and model-specific text quirks. See the "Smoke-test validation" section.

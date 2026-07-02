@@ -6,9 +6,9 @@ description: |
   version number less than agent_version; if none exists (first deploy) the
   new version is evaluated on its own.
 
-  Contract: caller must have already run actions/checkout@v6 (so
-  ${{ inputs.data_path }} is on disk) and azure/login@v3 (both the baseline
-  lookup and the Azure AI Evaluation SDK use the CLI-cached OIDC credential).
+  Contract: caller must have already run actions/checkout@v6 (so the file at
+  `data_path` is on disk) and azure/login@v3 (both the baseline lookup and
+  the Azure AI Evaluation SDK use the CLI-cached OIDC credential).
 
 inputs:
   project_endpoint:
