@@ -128,7 +128,7 @@ The source-code metadata uses `protocol_versions` and `code_configuration` with 
 
 **Step 8 — Smoke tests**
 
-When `SMOKE_TEST=true` (default), the script invokes `deployment/smoke-tests.py` against every agent that was just deployed — the image-based agent (`${AGENT_NAME}`), the source-code agent (`${AGENT_NAME}-src`), or both. The runner POSTs each prompt from [`deployment/smoke-tests.json`](../deployment/smoke-tests.json) to the agent's Responses endpoint and asserts case-insensitive substring rules on the reply. A failure exits non-zero.
+When `SMOKE_TEST=true` (default), the script curls the smoke-test runner from `JFolberth/ai-smoketest@v1.0` and invokes it against every agent that was just deployed — the image-based agent (`${AGENT_NAME}`), the source-code agent (`${AGENT_NAME}-src`), or both. The runner POSTs each prompt from [`deployment/smoke-tests.json`](../deployment/smoke-tests.json) to the agent's Responses endpoint and asserts case-insensitive substring rules on the reply. A failure exits non-zero. Override the pinned ref with `SMOKETEST_RUNNER_REF=<tag|branch|sha>` if you need to test against a newer runner.
 
 If `--skip-rbac` was set earlier, the step prints a warning: the runner needs the same Foundry Project Manager grant to hit the data plane, and without it every test will 404.
 
@@ -183,7 +183,7 @@ azd deploy
 - `deployment/azure.yaml` is gitignored. It is generated locally by `azd-select.sh` and must not be committed.
 - azd injects `TF_VAR_environment_name`, `TF_VAR_location`, and `TF_VAR_resource_group_name` automatically. Set `AI_DEPLOYMENTS_LOCATION` to control `TF_VAR_ai_deployments_location`. `terraform.tfvars` is used as a fallback for variables not set by azd.
 - **Remote state with azd:** azd calls `terraform init` internally. If `infra/terraform/backend_override.tf` exists (created by the [remote state opt-in](#remote-state--local-opt-in) setup), Terraform will use it automatically during `azd up`.
-- **Smoke tests:** A `postdeploy` hook (`deployment/scripts/run-smoke-tests.sh`) runs [`deployment/smoke-tests.py`](../deployment/smoke-tests.py) against the agent that `azd deploy` just created. Set `SMOKE_TEST=false` (via `azd env set` or `SMOKE_TEST=false azd up`) to skip. Override the agent name with `AGENT_NAME` if you renamed the service. See [Smoke tests](./smoke-tests.md).
+- **Smoke tests:** A `postdeploy` hook (`deployment/scripts/run-smoke-tests.sh`) curls the smoke-test runner from `JFolberth/ai-smoketest@v1.0` and runs it against the agent that `azd deploy` just created, using [`deployment/smoke-tests.json`](../deployment/smoke-tests.json) as the catalog. Set `SMOKE_TEST=false` (via `azd env set` or `SMOKE_TEST=false azd up`) to skip. Override the agent name with `AGENT_NAME` if you renamed the service; override the runner tag with `SMOKETEST_RUNNER_REF`. See [Smoke tests](./smoke-tests.md).
 
 ---
 

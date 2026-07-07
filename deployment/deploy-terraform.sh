@@ -313,7 +313,14 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 8: Smoke tests — POST to each deployed agent's Responses endpoint and
 # assert the expected behaviours from deployment/smoke-tests.json.
+#
+# The runner lives in JFolberth/ai-smoketest (pinned to a tag for immutability);
+# we curl it into a tempfile so local behaviour tracks the marketplace action
+# consumed in CI without keeping a duplicate copy in this repo.
 # ─────────────────────────────────────────────────────────────────────────────
+SMOKETEST_RUNNER_REF="${SMOKETEST_RUNNER_REF:-v1.0}"
+SMOKETEST_RUNNER_URL="https://raw.githubusercontent.com/JFolberth/ai-smoketest/${SMOKETEST_RUNNER_REF}/scripts/smoke-tests.py"
+
 echo "==> Running smoke tests..."
 if [ "$SMOKE_TEST" != true ]; then
   echo "    Skipping (SMOKE_TEST=false / --no-smoke-test)."
@@ -321,14 +328,18 @@ else
   if [ "$SKIP_RBAC" = true ]; then
     echo "    WARNING: --skip-rbac was set; smoke tests may 404 without Foundry Project Manager."
   fi
-  SMOKE_ARGS=(--project-endpoint "${PROJECT_ENDPOINT}")
+  SMOKE_ARGS=(--project-endpoint "${PROJECT_ENDPOINT}" --tests-file "${SCRIPT_DIR}/smoke-tests.json")
   if [ "$IMAGE_BASED_AGENT" = true ]; then
     SMOKE_ARGS+=(--agent-name "${AGENT_NAME}")
   fi
   if [ "$SOURCE_CODE_BASED_AGENT" = true ]; then
     SMOKE_ARGS+=(--agent-name "${SOURCE_CODE_AGENT_NAME}")
   fi
-  FOUNDRY_TOKEN="${FOUNDRY_TOKEN}" python3 "${SCRIPT_DIR}/smoke-tests.py" "${SMOKE_ARGS[@]}"
+  SMOKETEST_RUNNER="$(mktemp -t smoke-tests.XXXXXX.py)"
+  trap 'rm -f "$SMOKETEST_RUNNER"' EXIT
+  echo "    Fetching runner from JFolberth/ai-smoketest@${SMOKETEST_RUNNER_REF}..."
+  curl -fsSL "${SMOKETEST_RUNNER_URL}" -o "${SMOKETEST_RUNNER}"
+  FOUNDRY_TOKEN="${FOUNDRY_TOKEN}" python3 "${SMOKETEST_RUNNER}" "${SMOKE_ARGS[@]}"
 fi
 
 # ──────────────────────────────────────────────────────────────────────────

@@ -21,9 +21,11 @@ Each catalog entry is one HTTP step. A **scenario** is what the suite logically 
 
 | File | Purpose |
 |---|---|
-| [deployment/smoke-tests.json](../deployment/smoke-tests.json) | The test catalog — list of prompts and assertions |
-| [deployment/smoke-tests.py](../deployment/smoke-tests.py) | The runner — stdlib only, no pip dependencies |
-| [.github/actions/smoke-test/action.yml](../.github/actions/smoke-test/action.yml) | Composite action wrapping the runner for CI |
+| [deployment/smoke-tests.json](../deployment/smoke-tests.json) | The test catalog — list of prompts and assertions. Stays in this repo. |
+| [JFolberth/ai-smoketest](https://github.com/JFolberth/ai-smoketest) | The external runner + composite action. Published to the [GitHub Marketplace](https://github.com/marketplace/actions/ai-smoke-test) and consumed at `@v1.0`. Contains the Python runner (`scripts/smoke-tests.py`) and the composite `action.yml`. |
+| [deployment/scripts/run-smoke-tests.sh](../deployment/scripts/run-smoke-tests.sh) | azd `postdeploy` hook. Curls the runner from `JFolberth/ai-smoketest@v1.0` and invokes it against the deployed agent using `deployment/smoke-tests.json` as the catalog. |
+
+This repo no longer vendors the runner. Both the shell deploy scripts (Step 8) and the azd postdeploy hook fetch it at runtime from the marketplace repo; CI consumes it as a marketplace action. The `SMOKETEST_RUNNER_REF` environment variable (default `v1.0`) overrides the git ref used by the shell paths.
 
 ---
 
@@ -109,7 +111,7 @@ Rule 4 (brevity) is intentionally not asserted — length-based assertions tend 
 
 ## Runner
 
-[deployment/smoke-tests.py](../deployment/smoke-tests.py) is a single-file Python script with no third-party dependencies (stdlib only — `argparse`, `json`, `urllib`, `subprocess`).
+The runner is a single-file stdlib-only Python 3 script maintained in [JFolberth/ai-smoketest](https://github.com/JFolberth/ai-smoketest) at [`scripts/smoke-tests.py`](https://github.com/JFolberth/ai-smoketest/blob/v1.0/scripts/smoke-tests.py). This repo does not vendor a copy — the shell scripts curl it at deploy time and CI consumes the composite action from the [GitHub Marketplace](https://github.com/marketplace/actions/ai-smoke-test).
 
 ### CLI
 
@@ -117,20 +119,11 @@ Rule 4 (brevity) is intentionally not asserted — length-based assertions tend 
 smoke-tests.py
   --project-endpoint URL         (required) Foundry project endpoint
   --agent-name NAME              (required, repeatable) Agent to test; repeat to test more than one
-  --tests-file PATH              (optional) JSON catalog (default: ./smoke-tests.json next to the script)
+  --tests-file PATH              (required in this repo) JSON catalog path
   --timeout SECONDS              (optional) Per-request timeout (default: 120)
 ```
 
 Each `--agent-name` runs the full catalog against that agent. Per-agent results are summarised at the end. Counts are at the **step** granularity (e.g. `9/9 passed`); see [Test scenarios](#test-scenarios) for how steps group into scenarios. Exit code is **0** when every step passes for every agent, **1** if any step failed, **2** for runner errors (missing tests file, token acquisition failure).
-
-### Example
-
-```bash
-python3 deployment/smoke-tests.py \
-  --project-endpoint "https://ai-account-xxx.services.ai.azure.com/api/projects/ai-project" \
-  --agent-name agent-framework-agent-basic-responses \
-  --agent-name agent-framework-agent-basic-responses-src
-```
 
 ### Authentication
 
@@ -181,9 +174,15 @@ PROJECT_ENDPOINT=$(az cognitiveservices account show \
   --name <ai-account> --resource-group <rg> \
   --query 'properties.endpoints["AI Foundry API"]' -o tsv)/api/projects/<project-name>
 
-python3 deployment/smoke-tests.py \
+# Curl the runner from the marketplace repo (pinned tag matches Step 8)
+RUNNER=$(mktemp -t smoke-tests.XXXXXX.py)
+curl -fsSL https://raw.githubusercontent.com/JFolberth/ai-smoketest/v1.0/scripts/smoke-tests.py -o "$RUNNER"
+
+python3 "$RUNNER" \
   --project-endpoint "$PROJECT_ENDPOINT" \
-  --agent-name agent-framework-agent-basic-responses-src
+  --agent-name agent-framework-agent-basic-responses-src \
+  --tests-file deployment/smoke-tests.json
+rm -f "$RUNNER"
 ```
 
 For Terraform users, `terraform output -raw AZURE_AI_PROJECT_ENDPOINT` (run from `infra/terraform/`) prints the value directly.
@@ -192,7 +191,7 @@ For Terraform users, `terraform output -raw AZURE_AI_PROJECT_ENDPOINT` (run from
 
 ## In CI
 
-The `smoke-test` composite action ([action.yml](../.github/actions/smoke-test/action.yml)) wraps the runner for GitHub Actions. It runs **four times per pipeline** — once per agent variant × IaC tool:
+Both reusable workflows consume the marketplace action [`JFolberth/ai-smoketest@v1.0`](https://github.com/marketplace/actions/ai-smoke-test) directly — no local composite wrapper. It runs **four times per pipeline** — once per agent variant × IaC tool:
 
 | Workflow | Job | Agent name passed |
 |---|---|---|
@@ -201,9 +200,20 @@ The `smoke-test` composite action ([action.yml](../.github/actions/smoke-test/ac
 | `deploy-terraform.yml` | `update-agent` | `${{ inputs.agent_name }}` |
 | `deploy-terraform.yml` | `update-agent-source-code` | `${{ inputs.agent_name }}-src` |
 
+Call shape:
+
+```yaml
+- name: Smoke test
+  uses: JFolberth/ai-smoketest@v1.0
+  with:
+    project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
+    agent_name: ${{ inputs.agent_name }}
+    tests_file: deployment/smoke-tests.json
+```
+
 The smoke step is the **last step** of each update job. A smoke failure fails that single update job — parallel jobs (the other agent variant, or the other IaC tool entirely) continue running independently. See [GitHub Actions — Smoke tests in CI](./github-actions.md#smoke-tests-in-ci) for the full job context.
 
-The composite action assumes the caller has already run `actions/checkout@v6` (so the runner script and catalog are on disk) and `azure/login@v3` (so the runner can call `az account get-access-token`). It does not perform either itself.
+The action assumes the caller has already run `actions/checkout@v6` (so `tests_file` is on disk) and `azure/login@v3` (so the runner can call `az account get-access-token`). It does not perform either itself.
 
 ---
 
@@ -226,5 +236,5 @@ To assert HTTP failure instead of a 200, set `"assertions": {"status": 4xx}`. To
 | One test asserts `contains_any` but the response is reasonable | Assertion list is too narrow for the way the model phrased its answer | Broaden the `contains_any` list. See the `no_hallucination` history. |
 | `HTTP 404` on every test | Agent name does not exist in the project | Check spelling; image-based vs source-code agents use different names (`-src` suffix for source-code in this repo's deploy scripts and CI) |
 | `HTTP 401/403` | Token has the wrong audience, or RBAC has not propagated | Make sure you ran `az login` and have **Foundry Project Manager** at the project scope. If the deploy script ran with `--skip-rbac`, the step prints a warning. |
-| Runner exits with code 2 immediately | `smoke-tests.json` not found, or `az` not on `PATH` | Check the `--tests-file` path; install or login with Azure CLI |
+| Runner exits with code 2 immediately | `smoke-tests.json` not found, or `az` not on `PATH` | Check the `--tests-file` path; install or login with Azure CLI. If the shell scripts fail here, `curl` may have been unable to fetch the runner — check network and `SMOKETEST_RUNNER_REF`. |
 | `contains_any: none of [...] found` with a preview that looks correct | Substring matching is case-insensitive but exact — punctuation or whitespace differences can still miss | Add the literal phrasing the agent used to the list |

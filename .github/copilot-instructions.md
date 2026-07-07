@@ -24,7 +24,7 @@ A minimal reference for deploying a Python AI agent to Azure AI Foundry Hosted A
 | `deployment/azure-bicep.yaml` | azd config for Bicep (`infra.provider: bicep`, points to `deployment/infra-azd/`) |
 | `deployment/azure-terraform.yaml` | azd config for Terraform (`infra.provider: terraform`, points to `infra/terraform/`) |
 | `deployment/scripts/grant-project-manager.sh` | azd `postprovision` hook — grants Foundry Project Manager to the deploying principal at project scope (equivalent to Step 3 of the deploy scripts) |
-| `deployment/scripts/run-smoke-tests.sh` | azd `postdeploy` hook — runs `deployment/smoke-tests.py` against the deployed agent (equivalent to Step 8 of the deploy scripts). Skip with `SMOKE_TEST=false`; override agent with `AGENT_NAME`. |
+| `deployment/scripts/run-smoke-tests.sh` | azd `postdeploy` hook — curls the smoke-test runner from `JFolberth/ai-smoketest@v1.0` and runs it against the deployed agent using `deployment/smoke-tests.json` as the catalog (equivalent to Step 8 of the deploy scripts). Skip with `SMOKE_TEST=false`; override agent with `AGENT_NAME`; override runner ref with `SMOKETEST_RUNNER_REF`. |
 | `deployment/infra-azd/main.bicepparam` | azd-compatible Bicep parameter shim — uses `readEnvironmentVariable()` for azd env var injection |
 
 The **Foundry data plane** (`POST {projectEndpoint}/agents/{name}/versions?api-version=2025-11-15-preview`) is used to create agent versions — NOT `az cognitiveservices agent create`, which calls a broken `containers/default:start` operation.
@@ -191,16 +191,19 @@ Any change to model deployments, SKUs, capacity, regions, API versions, Terrafor
 The check must return `"status": "Succeeded"` (Bicep what-if) or a non-error plan (Terraform). If it surfaces `InvalidResourceProperties`, `SkuNotAvailable`, `LocationNotAvailable`, or similar — fix the inputs and re-run before committing. For SKU-availability errors specifically, use `az cognitiveservices model list --location <region> --query "[?model.name=='<model>'].model.skus[].name"` to enumerate the supported SKUs in that region.
 
 ### Smoke-test validation — required before commit
-Any change to `deployment/smoke-tests.py` or `deployment/smoke-tests.json` must be exercised against a live deployed agent before the commit lands. `python3 -c "import ..."` parsing of the script and offline unit checks miss real failure modes: payload-shape drift, model-specific text quirks (smart quotes, refusal phrasing), conversation/threading edges, and token-scope mistakes. Re-run end-to-end:
+Any change to `deployment/smoke-tests.json` must be exercised against a live deployed agent before the commit lands. Offline JSON parsing misses real failure modes: payload-shape drift, model-specific text quirks (smart quotes, refusal phrasing), conversation/threading edges, and token-scope mistakes. Re-run end-to-end using the same runner Step 8 uses (curled from the marketplace repo so local and CI stay in sync):
 
 ```bash
 # Pull project endpoint + agent name from the live IaC state, then run the catalog.
 PROJECT_ENDPOINT=$(terraform -chdir=infra/terraform output -raw AZURE_AI_PROJECT_ENDPOINT)   # or `az deployment sub show` for Bicep
 AGENT=agent-framework-agent-basic-responses
-python3 deployment/smoke-tests.py --project-endpoint "$PROJECT_ENDPOINT" --agent-name "$AGENT"
+RUNNER=$(mktemp -t smoke-tests.XXXXXX.py)
+curl -fsSL https://raw.githubusercontent.com/JFolberth/ai-smoketest/v1.0/scripts/smoke-tests.py -o "$RUNNER"
+python3 "$RUNNER" --project-endpoint "$PROJECT_ENDPOINT" --agent-name "$AGENT" --tests-file deployment/smoke-tests.json
+rm -f "$RUNNER"
 ```
 
-The run must report `Summary: N/N passed` (exit 0). If a test fails, fix the catalog or runner and re-run — do not commit a smoke-tests change that has not produced a clean local pass against a real agent.
+The run must report `Summary: N/N passed` (exit 0). If a test fails, fix the catalog and re-run — do not commit a smoke-tests change that has not produced a clean local pass against a real agent. If the runner itself is at fault, fix it in `JFolberth/ai-smoketest`, cut a new release, and bump the pinned tag here + in the workflow files.
 
 ### GitHub Actions — minimum versions
 Use the major version tag (e.g. `@v6`) which automatically picks up the latest patch release. The table below shows the **minimum** required major version — do not use anything older. If a newer major version is available, update both the workflows and this table.
@@ -231,7 +234,7 @@ Apply the **Don't Repeat Yourself** principle to GitHub Actions. When the same l
 - No hardcoded repo-relative file or directory paths inside an action's `run:` script. Any path the action reads, writes, or executes must be declared as an `input:` with a sensible default (typically the current canonical location) and consumed via an `env:` var. This keeps actions reusable when callers reorganize the repo and makes every dependency the action has explicit at the call site.
 - The calling job must run `actions/checkout@v6` before invoking any local composite action — the runner needs the repo on disk to resolve `./.github/actions/<name>`.
 - The calling job handles Azure CLI authentication (`azure/login@v3`) before invoking the action; the action assumes an authenticated session. This keeps actions auth-strategy-agnostic.
-- Existing composite actions in this repo: `deploy-bicep` (Bicep IaC deploy + outputs), `deploy-terraform` (Terraform IaC deploy + outputs), `push-image` (ACR image push), `update-agent` (Foundry data plane POST), `update-agent-source-code` (Foundry data plane multipart POST + poll), `smoke-test` (post-deploy Responses-endpoint validation via `deployment/smoke-tests.py`).
+- Existing composite actions in this repo: `deploy-bicep` (Bicep IaC deploy + outputs), `deploy-terraform` (Terraform IaC deploy + outputs), `push-image` (ACR image push), `update-agent` (Foundry data plane POST), `update-agent-source-code` (Foundry data plane multipart POST + poll). Smoke-test coverage is provided by the external `JFolberth/ai-smoketest@v1.0` marketplace action (consumed directly from `.github/workflows/deploy-bicep.yml` and `deploy-terraform.yml`); the agent-eval gate is `agent-eval`.
 
 **Reusable workflow conventions:**
 - Declare `on: workflow_call:` only (no `push:` / `pull_request:` triggers) for workflows that are always called from another workflow.
@@ -241,7 +244,7 @@ Apply the **Don't Repeat Yourself** principle to GitHub Actions. When the same l
 - Do not use `${{ ... }}` template expressions inside an action's top-level `name:` or `description:` fields. Those fields are metadata evaluated at action-load time and have no expression context — GitHub rejects the whole action with `Unrecognized named-value` and the calling job fails at 0s with a template validation exception. Only `runs.steps.*` fields (`env:`, `with:`, `if:`, `run:`, per-step `name:`) support expressions.
 - Do not use `az cognitiveservices agent create` — it calls a broken start operation for hosted agents.
 - Do not commit a change to model deployments, SKUs, capacity, regions, API versions, Terraform provider versions, or resource type definitions without first running the Bicep what-if (`az deployment sub what-if`) and/or `terraform plan` against the live Azure control plane. `az bicep build` and `terraform validate` do not catch SKU/region/model availability errors — only preflight does. See the "IaC preflight validation" section.
-- Do not commit a change to `deployment/smoke-tests.py` or `deployment/smoke-tests.json` without first running the runner end-to-end against a live deployed agent and confirming `Summary: N/N passed`. Offline parse/unit checks miss payload-shape drift and model-specific text quirks. See the "Smoke-test validation" section.
+- Do not commit a change to `deployment/smoke-tests.json` without first running the runner end-to-end against a live deployed agent and confirming `Summary: N/N passed`. Offline JSON parse checks miss payload-shape drift and model-specific text quirks. See the "Smoke-test validation" section.
 - Do not build Docker images without `--platform linux/amd64` on Apple Silicon.
 - Do not add the `cognitiveservices` Azure CLI extension as a prerequisite — it is not used.
 - Do not use `azurerm` or `hashicorp/azapi` as the Terraform provider source — use `Azure/azapi`.
@@ -273,7 +276,6 @@ for f in [
     '.github/actions/push-image/action.yml',
     '.github/actions/update-agent/action.yml',
     '.github/actions/update-agent-source-code/action.yml',
-    '.github/actions/smoke-test/action.yml',
 ]:
     try:
         yaml.load(open(f), Loader=_DupCheckLoader)

@@ -138,7 +138,7 @@ The source-code metadata uses `protocol_versions` and `code_configuration` with 
 
 **Step 8 — Smoke tests**
 
-When `SMOKE_TEST=true` (default), the script invokes `deployment/smoke-tests.py` against every agent that was just deployed — the image-based agent (`${AGENT_NAME}`), the source-code agent (`${AGENT_NAME}-src`), or both. The runner POSTs each prompt from [`deployment/smoke-tests.json`](../deployment/smoke-tests.json) to the agent's Responses endpoint and asserts case-insensitive substring rules on the reply. A failure exits non-zero.
+When `SMOKE_TEST=true` (default), the script curls the smoke-test runner from `JFolberth/ai-smoketest@v1.0` and invokes it against every agent that was just deployed — the image-based agent (`${AGENT_NAME}`), the source-code agent (`${AGENT_NAME}-src`), or both. The runner POSTs each prompt from [`deployment/smoke-tests.json`](../deployment/smoke-tests.json) to the agent's Responses endpoint and asserts case-insensitive substring rules on the reply. A failure exits non-zero. Override the pinned ref with `SMOKETEST_RUNNER_REF=<tag|branch|sha>` if you need to test against a newer runner.
 
 If `--skip-rbac` was set earlier, the step prints a warning: the runner needs the same Foundry Project Manager grant to hit the data plane, and without it every test will 404.
 
@@ -198,7 +198,7 @@ azd deploy
 | Step 3 — grant Foundry Project Manager | `postprovision` hook → `deployment/scripts/grant-project-manager.sh` |
 | Step 5 — build and push image | `azure.ai.agents` extension via ACR remote build (no local Docker required) |
 | Step 6 — create agent version | `azure.ai.agents` extension via Foundry data plane POST |
-| Step 8 — smoke tests | `postdeploy` hook → `deployment/scripts/run-smoke-tests.sh`. Set `SMOKE_TEST=false` (via `azd env set` or `SMOKE_TEST=false azd up`) to skip. Override the agent name with `AGENT_NAME` if you renamed the service. See [Smoke tests](./smoke-tests.md). |
+| Step 8 — smoke tests | `postdeploy` hook → `deployment/scripts/run-smoke-tests.sh`, which curls the runner from `JFolberth/ai-smoketest@v1.0` and runs it against the deployed agent using `deployment/smoke-tests.json` as the catalog. Set `SMOKE_TEST=false` (via `azd env set` or `SMOKE_TEST=false azd up`) to skip. Override the agent name with `AGENT_NAME`; override the runner tag with `SMOKETEST_RUNNER_REF`. See [Smoke tests](./smoke-tests.md). |
 
 ### Notes
 
