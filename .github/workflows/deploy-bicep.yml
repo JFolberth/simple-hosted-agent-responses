@@ -117,10 +117,11 @@ jobs:
           image: ${{ needs.deploy-iac.outputs.acr_endpoint }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
           model_deployment_name: ${{ needs.deploy-iac.outputs.model_deployment_name }}
       - name: Smoke test
-        uses: ./.github/actions/smoke-test
+        uses: JFolberth/ai-smoketest@main
         with:
           project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
           agent_name: ${{ inputs.agent_name }}
+          tests_file: deployment/smoke-tests.json
       - name: Agent evaluation gate
         uses: ./.github/actions/agent-eval
         with:
@@ -169,10 +170,11 @@ jobs:
           model_deployment_name: ${{ needs.deploy-iac.outputs.model_deployment_name }}
 
       - name: Smoke test
-        uses: ./.github/actions/smoke-test
+        uses: JFolberth/ai-smoketest@main
         with:
           project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
           agent_name: ${{ inputs.agent_name }}-src
+          tests_file: deployment/smoke-tests.json
 
       - name: Agent evaluation gate
         uses: ./.github/actions/agent-eval
