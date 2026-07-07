@@ -128,7 +128,7 @@ jobs:
           image: ${{ needs.deploy-iac.outputs.acr_endpoint }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
           model_deployment_name: ${{ needs.deploy-iac.outputs.model_deployment_name }}
       - name: Smoke test
-        uses: JFolberth/ai-smoketest@main
+        uses: JFolberth/ai-smoketest@v1.0
         with:
           project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
           agent_name: ${{ inputs.agent_name }}
@@ -181,7 +181,7 @@ jobs:
           model_deployment_name: ${{ needs.deploy-iac.outputs.model_deployment_name }}
 
       - name: Smoke test
-        uses: JFolberth/ai-smoketest@main
+        uses: JFolberth/ai-smoketest@v1.0
         with:
           project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
           agent_name: ${{ inputs.agent_name }}-src
