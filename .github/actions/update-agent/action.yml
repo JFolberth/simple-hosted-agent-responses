@@ -22,6 +22,10 @@ inputs:
     description: Memory allocation for the agent container
     required: false
     default: '0.5Gi'
+  toolbox_endpoint:
+    description: Optional Foundry Toolbox MCP endpoint injected as TOOLBOX_MCP_ENDPOINT env var
+    required: false
+    default: ''
 
 outputs:
   agent_version:
@@ -41,6 +45,7 @@ runs:
         MODEL_DEPLOYMENT_NAME: ${{ inputs.model_deployment_name }}
         CPU: ${{ inputs.cpu }}
         MEMORY: ${{ inputs.memory }}
+        TOOLBOX_ENDPOINT: ${{ inputs.toolbox_endpoint }}
       run: |
         FOUNDRY_TOKEN=$(az account get-access-token \
           --resource "https://ai.azure.com/" \
@@ -51,13 +56,17 @@ runs:
           --arg memory         "$MEMORY" \
           --arg model          "$MODEL_DEPLOYMENT_NAME" \
           --arg image          "$IMAGE" \
+          --arg toolbox        "$TOOLBOX_ENDPOINT" \
           '{
             definition: {
               kind: "hosted",
               container_protocol_versions: [{protocol: "responses", version: "2.0.0"}],
               cpu: $cpu,
               memory: $memory,
-              environment_variables: {AZURE_AI_MODEL_DEPLOYMENT_NAME: $model},
+              environment_variables: (
+                {AZURE_AI_MODEL_DEPLOYMENT_NAME: $model}
+                + (if $toolbox != "" then {TOOLBOX_MCP_ENDPOINT: $toolbox} else {} end)
+              ),
               image: $image
             }
           }')

@@ -1,23 +1,51 @@
 # Copyright (c) Microsoft. All rights reserved.
 
+import asyncio
+import logging
 import os
 
 from agent_framework import Agent
 from agent_framework.foundry import FoundryChatClient
-from agent_framework_foundry_hosting import ResponsesHostServer
+from agent_framework_foundry_hosting import FoundryToolbox, ResponsesHostServer
 from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
 
+logger = logging.getLogger(__name__)
 
-def main():
+
+async def main():
+    credential = DefaultAzureCredential()
     client = FoundryChatClient(
         project_endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
         model=os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"],
-        credential=DefaultAzureCredential(),
+        credential=credential,
     )
+
+    toolbox = None
+    toolbox_endpoint = os.getenv("TOOLBOX_MCP_ENDPOINT")
+    if toolbox_endpoint:
+        toolbox = FoundryToolbox(credential, url=toolbox_endpoint)
+        try:
+            await toolbox.connect()
+        except Exception:
+            logger.exception("Foundry Toolbox is unavailable; continuing without Web IQ")
+            await toolbox.close()
+            toolbox = None
+
+    # Only advertise the tool when it's actually attached.
+    web_iq_rule = (
+        "6. You have a web-search tool ('web-iq'). Use it for any Transformers "
+        "question whose answer depends on details you don't already know with "
+        "certainty (recent releases, exact episode numbers, comic issue "
+        "credits, obscure toy variants, third-party figures, current news). "
+        "Prefer calling the tool over answering 'I don't know' or 'I'm not "
+        "certain'. When you use the tool, cite the sources it returns. Rule 2 "
+        "still applies only when the tool also fails to find a confident "
+        "answer.\n"
+    ) if toolbox is not None else ""
 
     agent = Agent(
         client=client,
@@ -64,8 +92,10 @@ def main():
             "completeness of correct details over brevity.\n"
             "5. Never refuse an in-topic question or apologise for the depth "
             "of your answer — the user came to a Transformers expert on "
-            "purpose."
+            "purpose.\n"
+            + web_iq_rule
         ),
+        tools=toolbox,
         # History will be managed by the hosting infrastructure, thus there
         # is no need to store history by the service. Learn more at:
         # https://developers.openai.com/api/reference/resources/responses/methods/create
@@ -73,8 +103,9 @@ def main():
     )
 
     server = ResponsesHostServer(agent)
-    server.run()
+    await server.run_async()
 
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(main())

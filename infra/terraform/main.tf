@@ -113,6 +113,47 @@ module "foundry_project" {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Toolbox with Web IQ (optional)
+# Stores Toolbox connection credentials in Key Vault and registers the Web IQ
+# MCP endpoint as a CustomKeys RemoteTool connection on the Foundry project.
+# ─────────────────────────────────────────────────────────────────────────────
+
+module "toolbox_key_vault" {
+  count  = var.enable_web_iq ? 1 : 0
+  source = "./modules/keyvault"
+
+  resource_group_id   = azapi_resource.resource_group.id
+  location            = var.ai_deployments_location
+  name                = "kv-${local.resource_token}"
+  tenant_id           = data.azapi_client_config.current.tenant_id
+  secret_name         = "web-iq-api-key"
+  secret_content_type = "Web IQ API key"
+  secret_value        = var.web_iq_api_key
+  tags                = local.tags
+}
+
+module "web_iq" {
+  count  = var.enable_web_iq ? 1 : 0
+  source = "./modules/foundry_project_connection"
+
+  project_id  = module.foundry_project.project_id
+  api_version = "2026-05-01"
+  connection_config = {
+    name      = var.web_iq_connection_name
+    category  = "RemoteTool"
+    target    = "https://api.microsoft.ai/v3/mcp"
+    auth_type = "CustomKeys"
+  }
+  credentials = {
+    keys = {
+      "x-apikey" = var.web_iq_api_key
+    }
+  }
+
+  depends_on = [module.toolbox_key_vault]
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Azure Container Registry
 # Stores Docker images built for the hosted agent. The Foundry project
 # managed identity is granted AcrPull so the agent runtime can pull images.

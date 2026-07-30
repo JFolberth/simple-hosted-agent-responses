@@ -38,6 +38,10 @@ inputs:
     description: Maximum time to wait for the source-code deployment to reach active status
     required: false
     default: '600'
+  toolbox_endpoint:
+    description: Optional Foundry Toolbox MCP endpoint injected as TOOLBOX_MCP_ENDPOINT env var
+    required: false
+    default: ''
 
 outputs:
   agent_version:
@@ -58,6 +62,7 @@ runs:
         RUNTIME: ${{ inputs.runtime }}
         ENTRY_POINT: ${{ inputs.entry_point }}
         DEPENDENCY_RESOLUTION: ${{ inputs.dependency_resolution }}
+        TOOLBOX_ENDPOINT: ${{ inputs.toolbox_endpoint }}
       run: |
         METADATA_FILE=$(mktemp)
         ENTRY_POINT_JSON=$(python3 -c 'import json,sys; print(json.dumps(json.loads(sys.argv[1])))' "$ENTRY_POINT")
@@ -67,6 +72,7 @@ runs:
           --arg memory "$MEMORY" \
           --arg runtime "$RUNTIME" \
           --arg dep_resolution "$DEPENDENCY_RESOLUTION" \
+          --arg toolbox "$TOOLBOX_ENDPOINT" \
           --argjson entry_point "$ENTRY_POINT_JSON" \
           '{
             description: "Hosted agent deployed from source code",
@@ -80,7 +86,10 @@ runs:
                 entry_point: $entry_point,
                 dependency_resolution: $dep_resolution
               },
-              environment_variables: {AZURE_AI_MODEL_DEPLOYMENT_NAME: $model}
+              environment_variables: (
+                {AZURE_AI_MODEL_DEPLOYMENT_NAME: $model}
+                + (if $toolbox != "" then {TOOLBOX_MCP_ENDPOINT: $toolbox} else {} end)
+              )
             }
           }' > "$METADATA_FILE"
         echo "metadata_file=${METADATA_FILE}" >> "$GITHUB_OUTPUT"

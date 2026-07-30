@@ -3,13 +3,19 @@ variable "project_id" {
   description = "Resource ID of the AI Foundry project that owns this connection."
 }
 
+variable "api_version" {
+  type        = string
+  description = "API version used to manage the project connection."
+  default     = "2026-03-01"
+}
+
 variable "connection_config" {
   type = object({
     name             = string
     category         = string
     target           = string
     auth_type        = string
-    is_shared_to_all = optional(bool, true)
+    is_shared_to_all = optional(bool)
     metadata         = optional(map(string))
   })
   description = "Connection configuration."

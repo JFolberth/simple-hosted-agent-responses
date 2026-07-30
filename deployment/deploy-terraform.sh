@@ -109,12 +109,26 @@ PROJECT_ID=$(            _get AZURE_AI_PROJECT_ID)
 PROJECT_ENDPOINT=$(      _get AZURE_AI_PROJECT_ENDPOINT)
 ACR_ENDPOINT=$(          _get AZURE_CONTAINER_REGISTRY_ENDPOINT)
 MODEL_DEPLOYMENT_NAME=$( _get AZURE_AI_MODEL_DEPLOYMENT_NAME)
+WEB_IQ_CONNECTION_NAME=$(_get WEB_IQ_CONNECTION_NAME)
+TOOLBOX_NAME=$(          _get TOOLBOX_NAME)
+TOOLBOX_ENDPOINT=$(      _get TOOLBOX_ENDPOINT)
+TOOLBOX_TOOLS_JSON=$(    _get TOOLBOX_TOOLS_JSON)
 ACR_NAME="${ACR_ENDPOINT%.azurecr.io}"
+
+# Toolbox reconciliation and TOOLBOX_MCP_ENDPOINT injection are gated on the
+# desired-state tool array being non-empty.
+TOOLBOX_ENABLED=false
+if [ -n "${TOOLBOX_TOOLS_JSON}" ] && [ "${TOOLBOX_TOOLS_JSON}" != "[]" ]; then
+  TOOLBOX_ENABLED=true
+fi
 
 echo "    AI Account      : ${AI_ACCOUNT_NAME}"
 echo "    Project         : ${PROJECT_NAME}"
 echo "    Project endpoint: ${PROJECT_ENDPOINT}"
 echo "    ACR             : ${ACR_ENDPOINT}"
+if [ "${TOOLBOX_ENABLED}" = true ]; then
+  echo "    Toolbox         : ${TOOLBOX_NAME}"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 3: Assign Foundry Project Manager (eadc314b) at project scope
@@ -142,6 +156,69 @@ fi
 
 # Acquire a Foundry data-plane token once — reused by both agent deployments.
 FOUNDRY_TOKEN=$(az account get-access-token --resource "https://ai.azure.com/" --query accessToken -o tsv)
+
+if [ "${TOOLBOX_ENABLED}" = true ]; then
+  # ───────────────────────────────────────────────────────────────────────────
+  # Step 3b: Reconcile the Foundry Toolbox to Terraform's desired-state tools.
+  #
+  # Toolboxes live in the Foundry data plane (not ARM). Versions are immutable;
+  # reconciliation = POST a new version with the full desired tools array, then
+  # PATCH default_version. We compare the current default version's tools
+  # against TOOLBOX_TOOLS_JSON (canonicalized: nulls stripped, stable sort)
+  # and skip the write when they already match.
+  # ───────────────────────────────────────────────────────────────────────────
+  echo "==> Reconciling Foundry Toolbox '${TOOLBOX_NAME}'..."
+
+  DESIRED_TOOLS_CANON=$(echo "${TOOLBOX_TOOLS_JSON}" \
+    | jq -Sc 'sort_by(.server_label // .name // .type)')
+
+  TOOLBOX_GET=$(curl -sS -X GET \
+    "${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}?api-version=v1" \
+    -H "Authorization: Bearer ${FOUNDRY_TOKEN}" \
+    -H "Accept: application/json" \
+    -w $'\n__HTTP_STATUS__%{http_code}')
+  TOOLBOX_HTTP=$(echo "${TOOLBOX_GET}" | sed -n 's/^__HTTP_STATUS__//p')
+  TOOLBOX_BODY=$(echo "${TOOLBOX_GET}" | sed '/^__HTTP_STATUS__/d')
+
+  TOOLBOX_MATCHES=false
+  if [ "${TOOLBOX_HTTP}" = "200" ]; then
+    CURRENT_VERSION=$(echo "${TOOLBOX_BODY}" | jq -r '.default_version')
+    VERSION_BODY=$(curl -sS -f -X GET \
+      "${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}/versions/${CURRENT_VERSION}?api-version=v1" \
+      -H "Authorization: Bearer ${FOUNDRY_TOKEN}" \
+      -H "Accept: application/json")
+    CURRENT_TOOLS_CANON=$(echo "${VERSION_BODY}" | jq -Sc '
+      (.tools // [])
+      | map(with_entries(select(.value != null)))
+      | sort_by(.server_label // .name // .type)')
+    if [ "${DESIRED_TOOLS_CANON}" = "${CURRENT_TOOLS_CANON}" ]; then
+      TOOLBOX_MATCHES=true
+      echo "    Toolbox default version ${CURRENT_VERSION} already matches desired state."
+    fi
+  elif [ "${TOOLBOX_HTTP}" != "404" ]; then
+    echo "ERROR: Reading Toolbox '${TOOLBOX_NAME}' returned HTTP ${TOOLBOX_HTTP}" >&2
+    echo "${TOOLBOX_BODY}" >&2
+    exit 1
+  fi
+
+  if [ "${TOOLBOX_MATCHES}" = false ]; then
+    TOOLBOX_VERSION_BODY=$(jq -cn --argjson tools "${TOOLBOX_TOOLS_JSON}" '{tools: $tools}')
+    NEW_VERSION_RESPONSE=$(curl -sS -f -X POST \
+      "${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}/versions?api-version=v1" \
+      -H "Authorization: Bearer ${FOUNDRY_TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d "${TOOLBOX_VERSION_BODY}")
+    NEW_VERSION=$(echo "${NEW_VERSION_RESPONSE}" | jq -r '.version')
+
+    curl -sS -f -X PATCH \
+      "${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}?api-version=v1" \
+      -H "Authorization: Bearer ${FOUNDRY_TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d "{\"default_version\": \"${NEW_VERSION}\"}" > /dev/null
+
+    echo "    Toolbox default version set to ${NEW_VERSION}."
+  fi
+fi
 
 if [ "$IMAGE_BASED_AGENT" = true ]; then
   # ───────────────────────────────────────────────────────────────────────────
@@ -177,15 +254,18 @@ if [ "$IMAGE_BASED_AGENT" = true ]; then
   echo "==> Deploying image-based hosted agent via Foundry data plane..."
   AGENT_REQUEST_BODY=$(python3 - <<EOF
 import json
+environment_variables = {
+  "AZURE_AI_MODEL_DEPLOYMENT_NAME": "${MODEL_DEPLOYMENT_NAME}"
+}
+if "${TOOLBOX_ENABLED}" == "true":
+  environment_variables["TOOLBOX_MCP_ENDPOINT"] = "${TOOLBOX_ENDPOINT}"
 body = {
   "definition": {
     "kind": "hosted",
     "container_protocol_versions": [{"protocol": "responses", "version": "2.0.0"}],
     "cpu": "0.25",
     "memory": "0.5Gi",
-    "environment_variables": {
-      "AZURE_AI_MODEL_DEPLOYMENT_NAME": "${MODEL_DEPLOYMENT_NAME}"
-    },
+    "environment_variables": environment_variables,
     "image": "${FULL_IMAGE}"
   }
 }
@@ -239,15 +319,18 @@ if [ "$SOURCE_CODE_BASED_AGENT" = true ]; then
   # The server rejects the wrong field name with HTTP 400.
   python3 - <<EOF > "${SOURCE_CODE_METADATA}"
 import json
+environment_variables = {
+  "AZURE_AI_MODEL_DEPLOYMENT_NAME": "${MODEL_DEPLOYMENT_NAME}"
+}
+if "${TOOLBOX_ENABLED}" == "true":
+  environment_variables["TOOLBOX_MCP_ENDPOINT"] = "${TOOLBOX_ENDPOINT}"
 body = {
   "definition": {
     "kind": "hosted",
     "protocol_versions": [{"protocol": "responses", "version": "2.0.0"}],
     "cpu": "${SOURCE_CODE_CPU}",
     "memory": "${SOURCE_CODE_MEMORY}",
-    "environment_variables": {
-      "AZURE_AI_MODEL_DEPLOYMENT_NAME": "${MODEL_DEPLOYMENT_NAME}"
-    },
+    "environment_variables": environment_variables,
     "code_configuration": {
       "runtime": "${SOURCE_CODE_RUNTIME}",
       "entry_point": ${SOURCE_CODE_ENTRY_POINT},

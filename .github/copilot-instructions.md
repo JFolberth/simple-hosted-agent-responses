@@ -234,7 +234,7 @@ Apply the **Don't Repeat Yourself** principle to GitHub Actions. When the same l
 - No hardcoded repo-relative file or directory paths inside an action's `run:` script. Any path the action reads, writes, or executes must be declared as an `input:` with a sensible default (typically the current canonical location) and consumed via an `env:` var. This keeps actions reusable when callers reorganize the repo and makes every dependency the action has explicit at the call site.
 - The calling job must run `actions/checkout@v6` before invoking any local composite action — the runner needs the repo on disk to resolve `./.github/actions/<name>`.
 - The calling job handles Azure CLI authentication (`azure/login@v3`) before invoking the action; the action assumes an authenticated session. This keeps actions auth-strategy-agnostic.
-- Existing composite actions in this repo: `deploy-bicep` (Bicep IaC deploy + outputs), `deploy-terraform` (Terraform IaC deploy + outputs), `push-image` (ACR image push), `update-agent` (Foundry data plane POST), `update-agent-source-code` (Foundry data plane multipart POST + poll). Smoke-test coverage is provided by the external `JFolberth/ai-smoketest@v1.0` marketplace action (consumed directly from `.github/workflows/deploy-bicep.yml` and `deploy-terraform.yml`); the agent-eval gate is `agent-eval`.
+- Existing composite actions in this repo: `deploy-bicep` (Bicep IaC deploy + outputs), `deploy-terraform` (Terraform IaC deploy + outputs), `push-image` (ACR image push), `update-agent` (Foundry data plane POST), `update-agent-source-code` (Foundry data plane multipart POST + poll), `update-toolbox` (Foundry Toolbox declarative reconcile). Smoke-test coverage is provided by the external `JFolberth/ai-smoketest@v1.0` marketplace action (consumed directly from `.github/workflows/deploy-bicep.yml` and `deploy-terraform.yml`); the agent-eval gate is `agent-eval`.
 
 **Reusable workflow conventions:**
 - Declare `on: workflow_call:` only (no `push:` / `pull_request:` triggers) for workflows that are always called from another workflow.
@@ -276,6 +276,7 @@ for f in [
     '.github/actions/push-image/action.yml',
     '.github/actions/update-agent/action.yml',
     '.github/actions/update-agent-source-code/action.yml',
+    '.github/actions/update-toolbox/action.yml',
 ]:
     try:
         yaml.load(open(f), Loader=_DupCheckLoader)

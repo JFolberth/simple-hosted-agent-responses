@@ -30,6 +30,10 @@ inputs:
     description: State blob key (filename) for remote state (optional)
     required: false
     default: ''
+  web_iq_api_key:
+    description: Web IQ API key. When empty, TF_VAR_web_iq_api_key is not set; Terraform validation then fails unless enable_web_iq is false.
+    required: false
+    default: ''
 
 outputs:
   project_endpoint:
@@ -41,6 +45,15 @@ outputs:
   acr_endpoint:
     description: Container registry login server
     value: ${{ steps.read-outputs.outputs.acr_endpoint }}
+  toolbox_endpoint:
+    description: Consumer MCP endpoint for the Foundry Toolbox
+    value: ${{ steps.read-outputs.outputs.toolbox_endpoint }}
+  toolbox_name:
+    description: Foundry Toolbox name (matches the project name)
+    value: ${{ steps.read-outputs.outputs.toolbox_name }}
+  toolbox_tools_json:
+    description: Desired-state JSON array of tools for the Foundry Toolbox ("[]" when none enabled)
+    value: ${{ steps.read-outputs.outputs.toolbox_tools_json }}
 
 runs:
   using: composite
@@ -90,7 +103,16 @@ runs:
         ENVIRONMENT_NAME: ${{ inputs.environment_name }}
         LOCATION: ${{ inputs.location }}
         AI_DEPLOYMENTS_LOCATION: ${{ inputs.ai_deployments_location }}
+        # Set only when the caller provided a value — an empty TF_VAR_ still
+        # binds the variable, so we conditionally export instead of always setting.
+        TF_VAR_web_iq_api_key: ${{ inputs.web_iq_api_key }}
       run: |
+        # If the caller didn't supply a Web IQ key, unset the TF_VAR so Terraform
+        # falls back to the variable default (null) and its validation fires only
+        # when enable_web_iq is true.
+        if [[ -z "${TF_VAR_web_iq_api_key}" ]]; then
+          unset TF_VAR_web_iq_api_key
+        fi
         terraform apply -auto-approve -input=false \
           -var="environment_name=${ENVIRONMENT_NAME}" \
           -var="location=${LOCATION}" \
@@ -107,3 +129,6 @@ runs:
         echo "project_endpoint=$(_get AZURE_AI_PROJECT_ENDPOINT)" >> "$GITHUB_OUTPUT"
         echo "model_deployment_name=$(_get AZURE_AI_MODEL_DEPLOYMENT_NAME)" >> "$GITHUB_OUTPUT"
         echo "acr_endpoint=$(_get AZURE_CONTAINER_REGISTRY_ENDPOINT)" >> "$GITHUB_OUTPUT"
+        echo "toolbox_endpoint=$(_get TOOLBOX_ENDPOINT)" >> "$GITHUB_OUTPUT"
+        echo "toolbox_name=$(_get TOOLBOX_NAME)" >> "$GITHUB_OUTPUT"
+        echo "toolbox_tools_json=$(_get TOOLBOX_TOOLS_JSON)" >> "$GITHUB_OUTPUT"
