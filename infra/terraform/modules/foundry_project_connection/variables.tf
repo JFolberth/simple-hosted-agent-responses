@@ -9,7 +9,7 @@ variable "connection_config" {
     category         = string
     target           = string
     auth_type        = string
-    is_shared_to_all = optional(bool, true)
+    is_shared_to_all = optional(bool)
     metadata         = optional(map(string))
   })
   description = "Connection configuration."

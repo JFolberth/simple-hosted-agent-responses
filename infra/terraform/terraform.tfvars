@@ -10,6 +10,9 @@ location                = "swedencentral"
 ai_deployments_location = "swedencentral"
 ai_foundry_project_name = "ai-project-tf"
 
+# Web IQ is limited access and disabled by default. To enable it, set
+# TF_VAR_enable_web_iq=true and TF_VAR_web_iq_api_key='<key>' at deploy time.
+
 deployments = [
   {
     name = "gpt-5.4-mini"

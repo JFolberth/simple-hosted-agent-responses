@@ -42,6 +42,9 @@ on:
         required: true
       AZURE_SUBSCRIPTION_ID:
         required: true
+      WEB_IQ_API_KEY:
+        description: Web IQ API key. When absent, Terraform validation fails unless enable_web_iq is set to false.
+        required: false
 
 jobs:
   # ── Deploy infrastructure ─────────────────────────────────────────────────
@@ -65,6 +68,9 @@ jobs:
       project_endpoint: ${{ steps.deploy-iac.outputs.project_endpoint }}
       acr_endpoint: ${{ steps.deploy-iac.outputs.acr_endpoint }}
       model_deployment_name: ${{ steps.deploy-iac.outputs.model_deployment_name }}
+      toolbox_endpoint: ${{ steps.deploy-iac.outputs.toolbox_endpoint }}
+      toolbox_name: ${{ steps.deploy-iac.outputs.toolbox_name }}
+      toolbox_tools_json: ${{ steps.deploy-iac.outputs.toolbox_tools_json }}
 
     steps:
       - name: Checkout
@@ -88,6 +94,39 @@ jobs:
           backend_storage_account: ${{ vars.TF_BACKEND_STORAGE_ACCOUNT }}
           backend_container: ${{ vars.TF_BACKEND_CONTAINER }}
           backend_key: ${{ vars.TF_BACKEND_KEY }}
+          web_iq_api_key: ${{ secrets.WEB_IQ_API_KEY }}
+
+  # ── Reconcile Foundry Toolbox ─────────────────────────────────────────────
+  # Runs in parallel with the two agent-update jobs. Skipped when Terraform
+  # produced no tools (toolbox_tools_json is empty or the literal "[]"), which
+  # is the default state — no tool connections enabled.
+  update-toolbox:
+    name: Update Toolbox
+    needs: deploy-iac
+    if: needs.deploy-iac.outputs.toolbox_tools_json != '' && needs.deploy-iac.outputs.toolbox_tools_json != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Azure login
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Reconcile toolbox
+        uses: ./.github/actions/update-toolbox
+        with:
+          project_endpoint: ${{ needs.deploy-iac.outputs.project_endpoint }}
+          toolbox_name: ${{ needs.deploy-iac.outputs.toolbox_name }}
+          tools: |-
+            ${{ needs.deploy-iac.outputs.toolbox_tools_json }}
 
   # ── Push image + update image-based agent ─────────────────────────────────
   # Runs in parallel with update-agent-source-code. Both jobs depend only on
@@ -127,6 +166,7 @@ jobs:
           agent_name: ${{ inputs.agent_name }}
           image: ${{ needs.deploy-iac.outputs.acr_endpoint }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
           model_deployment_name: ${{ needs.deploy-iac.outputs.model_deployment_name }}
+          toolbox_endpoint: ${{ needs.deploy-iac.outputs.toolbox_endpoint }}
       - name: Smoke test
         uses: JFolberth/ai-smoketest@v1.0
         with:
@@ -179,6 +219,7 @@ jobs:
           agent_name: ${{ inputs.agent_name }}-src
           source_code_zip: ./.artifacts/source-code/source-code.zip
           model_deployment_name: ${{ needs.deploy-iac.outputs.model_deployment_name }}
+          toolbox_endpoint: ${{ needs.deploy-iac.outputs.toolbox_endpoint }}
 
       - name: Smoke test
         uses: JFolberth/ai-smoketest@v1.0

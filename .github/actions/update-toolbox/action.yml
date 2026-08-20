@@ -1,0 +1,115 @@
+name: Reconcile Foundry Toolbox
+description: >-
+  Declarative reconcile of a Foundry Toolbox's tools list. POSTs a new version
+  and PATCHes default_version only when the current default's tools differ from
+  the input array. Tools present in the current version but absent from `tools`
+  are removed on reconcile.
+
+inputs:
+  project_endpoint:
+    description: Foundry project endpoint URL
+    required: true
+  toolbox_name:
+    description: Name of the Foundry Toolbox (typically the project name)
+    required: true
+  tools:
+    description: JSON array of full desired-state tool specs
+    required: true
+
+outputs:
+  toolbox_version:
+    description: Default version of the toolbox after reconcile (existing or newly created)
+    value: ${{ steps.reconcile.outputs.toolbox_version }}
+  changed:
+    description: '"true" if a new version was created and published, "false" otherwise'
+    value: ${{ steps.reconcile.outputs.changed }}
+
+runs:
+  using: composite
+  steps:
+    - name: Reconcile toolbox default version
+      id: reconcile
+      shell: bash
+      env:
+        PROJECT_ENDPOINT: ${{ inputs.project_endpoint }}
+        TOOLBOX_NAME: ${{ inputs.toolbox_name }}
+        TOOLS_JSON: ${{ inputs.tools }}
+      run: |
+        set -euo pipefail
+
+        FOUNDRY_TOKEN=$(az account get-access-token \
+          --resource "https://ai.azure.com/" \
+          --query accessToken -o tsv)
+
+        # Canonicalize desired tools: sort keys + stable sort by identity field.
+        DESIRED_CANON=$(printf '%s' "$TOOLS_JSON" \
+          | jq -Sc 'sort_by(.server_label // .name // .type)')
+
+        TOOLBOX_URL="${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}?api-version=v1"
+
+        HTTP_STATUS=$(curl -sS -o /tmp/toolbox_get.json \
+          -w "%{http_code}" \
+          -X GET \
+          "$TOOLBOX_URL" \
+          -H "Authorization: Bearer ${FOUNDRY_TOKEN}" \
+          -H "Accept: application/json")
+
+        MATCHES=false
+        if [[ "$HTTP_STATUS" == "200" ]]; then
+          CURRENT_VERSION=$(jq -r '.default_version' /tmp/toolbox_get.json)
+          curl -sS -f -o /tmp/toolbox_version.json \
+            -X GET \
+            "${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}/versions/${CURRENT_VERSION}?api-version=v1" \
+            -H "Authorization: Bearer ${FOUNDRY_TOKEN}" \
+            -H "Accept: application/json"
+          CURRENT_CANON=$(jq -Sc '
+            (.tools // [])
+            | map(with_entries(select(.value != null)))
+            | sort_by(.server_label // .name // .type)
+          ' /tmp/toolbox_version.json)
+          if [[ "$DESIRED_CANON" == "$CURRENT_CANON" ]]; then
+            MATCHES=true
+            echo "    Toolbox default version $CURRENT_VERSION already matches desired state."
+            echo "toolbox_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+        elif [[ "$HTTP_STATUS" != "404" ]]; then
+          echo "Error: reading toolbox '$TOOLBOX_NAME' returned HTTP $HTTP_STATUS" >&2
+          cat /tmp/toolbox_get.json >&2
+          exit 1
+        fi
+
+        if [[ "$MATCHES" == "false" ]]; then
+          VERSION_BODY=$(jq -cn --argjson tools "$TOOLS_JSON" '{tools: $tools}')
+
+          HTTP_STATUS=$(curl -sS -o /tmp/toolbox_post.json \
+            -w "%{http_code}" \
+            -X POST \
+            "${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}/versions?api-version=v1" \
+            -H "Authorization: Bearer ${FOUNDRY_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$VERSION_BODY")
+          if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
+            echo "Error: creating toolbox version returned HTTP $HTTP_STATUS" >&2
+            cat /tmp/toolbox_post.json >&2
+            exit 1
+          fi
+          NEW_VERSION=$(jq -r '.version' /tmp/toolbox_post.json)
+
+          HTTP_STATUS=$(curl -sS -o /tmp/toolbox_patch.json \
+            -w "%{http_code}" \
+            -X PATCH \
+            "$TOOLBOX_URL" \
+            -H "Authorization: Bearer ${FOUNDRY_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"default_version\":\"$NEW_VERSION\"}")
+          if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
+            echo "Error: publishing toolbox default_version returned HTTP $HTTP_STATUS" >&2
+            cat /tmp/toolbox_patch.json >&2
+            exit 1
+          fi
+
+          echo "    Toolbox default version set to $NEW_VERSION."
+          echo "toolbox_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+        fi

@@ -56,3 +56,27 @@ variable "deployments" {
   description = "List of model deployments to create on the AI Services account."
   default     = []
 }
+
+variable "enable_web_iq" {
+  type        = bool
+  description = "Enable the optional Microsoft Web IQ connection and supporting Key Vault."
+  default     = true
+}
+
+variable "web_iq_api_key" {
+  type        = string
+  description = "Web IQ API key. Required when enable_web_iq is true. The value is stored in Terraform state."
+  default     = null
+  sensitive   = true
+
+  validation {
+    condition     = !var.enable_web_iq || (var.web_iq_api_key != null && length(trimspace(var.web_iq_api_key)) > 0)
+    error_message = "web_iq_api_key must be set when enable_web_iq is true."
+  }
+}
+
+variable "web_iq_connection_name" {
+  type        = string
+  description = "Name of the Web IQ Foundry project connection."
+  default     = "WebIQ"
+}

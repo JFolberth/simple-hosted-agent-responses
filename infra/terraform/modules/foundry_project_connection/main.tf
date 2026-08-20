@@ -1,25 +1,31 @@
 resource "azapi_resource" "connection" {
-  type      = "Microsoft.CognitiveServices/accounts/projects/connections@2026-03-01"
+  type      = "Microsoft.CognitiveServices/accounts/projects/connections@2026-05-15-preview"
   name      = var.connection_config.name
   parent_id = var.project_id
 
-  # Schema validation disabled — api-version 2026-03-01 is not yet bundled.
+  # Schema validation disabled — these preview API versions are not yet bundled.
   schema_validation_enabled = false
 
-  # ignore_missing_property: don't fail plan when the API returns system-managed
-  #   properties that aren't in our config (common for connection resources).
-  # ignore_null_property: omit null fields (e.g. credentials when auth is AAD).
+  # Don't fail plan when the API returns system-managed properties that aren't
+  # in our config (common for connection resources).
   ignore_missing_property = true
-  ignore_null_property    = true
 
   body = {
-    properties = {
-      category      = var.connection_config.category
-      target        = var.connection_config.target
-      authType      = var.connection_config.auth_type
-      isSharedToAll = var.connection_config.is_shared_to_all
-      metadata      = var.connection_config.metadata
-      credentials   = var.credentials
-    }
+    properties = merge(
+      {
+        category = var.connection_config.category
+        target   = var.connection_config.target
+        authType = var.connection_config.auth_type
+      },
+      var.connection_config.is_shared_to_all == null ? {} : {
+        isSharedToAll = var.connection_config.is_shared_to_all
+      },
+      var.connection_config.metadata == null ? {} : {
+        metadata = var.connection_config.metadata
+      },
+      var.credentials == null ? {} : {
+        credentials = var.credentials
+      }
+    )
   }
 }
