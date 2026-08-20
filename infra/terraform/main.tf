@@ -136,8 +136,7 @@ module "web_iq" {
   count  = var.enable_web_iq ? 1 : 0
   source = "./modules/foundry_project_connection"
 
-  project_id  = module.foundry_project.project_id
-  api_version = "2026-05-01"
+  project_id = module.foundry_project.project_id
   connection_config = {
     name      = var.web_iq_connection_name
     category  = "RemoteTool"

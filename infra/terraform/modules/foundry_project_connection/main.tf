@@ -1,5 +1,5 @@
 resource "azapi_resource" "connection" {
-  type      = "Microsoft.CognitiveServices/accounts/projects/connections@${var.api_version}"
+  type      = "Microsoft.CognitiveServices/accounts/projects/connections@2026-05-15-preview"
   name      = var.connection_config.name
   parent_id = var.project_id
 
