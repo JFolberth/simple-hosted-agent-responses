@@ -55,6 +55,7 @@ jobs:
       environment_name: ${{ inputs.environment_name || vars.ENVIRONMENT_NAME }}
       location: ${{ inputs.location || vars.AZURE_LOCATION || 'swedencentral' }}
       ai_deployments_location: ${{ inputs.ai_deployments_location || vars.AZURE_AI_DEPLOYMENTS_LOCATION || 'swedencentral' }}
+      runner: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     secrets: inherit
 
   # ── Deploy — Terraform IaC + image-based agent + source-code agent ────────
@@ -72,4 +73,5 @@ jobs:
       environment_name: ${{ inputs.environment_name || vars.ENVIRONMENT_NAME }}
       location: ${{ inputs.location || vars.AZURE_LOCATION || 'swedencentral' }}
       ai_deployments_location: ${{ inputs.ai_deployments_location || vars.AZURE_AI_DEPLOYMENTS_LOCATION || 'swedencentral' }}
+      runner: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     secrets: inherit

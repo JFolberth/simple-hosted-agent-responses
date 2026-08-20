@@ -35,6 +35,10 @@ on:
         description: Azure region for AI model deployments
         required: true
         type: string
+      runner:
+        description: Runner label for deployment jobs — set to 'self-hosted' to use the Container Apps runner
+        type: string
+        default: ubuntu-latest
     secrets:
       AZURE_CLIENT_ID:
         required: true
@@ -51,7 +55,7 @@ jobs:
   # without re-running IaC.
   deploy-iac:
     name: Deploy IaC
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     permissions:
       id-token: write
       contents: read
@@ -85,7 +89,7 @@ jobs:
   update-agent:
     name: Update Agent (image)
     needs: deploy-iac
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     permissions:
       id-token: write
       contents: read
@@ -136,7 +140,7 @@ jobs:
   update-agent-source-code:
     name: Update Agent (source code)
     needs: deploy-iac
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     permissions:
       id-token: write
       contents: read
