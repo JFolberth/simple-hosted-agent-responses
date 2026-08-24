@@ -1,5 +1,5 @@
 name: Push Image to ACR
-description: Authenticates to ACR and pushes a pre-built image tarball. Assumes Azure CLI is already authenticated in the calling job.
+description: Pushes a pre-built image archive to ACR with skopeo. Assumes Azure CLI is already authenticated in the calling job.
 
 inputs:
   acr_endpoint:
@@ -11,6 +11,14 @@ inputs:
   image_tag:
     description: Image tag
     required: true
+  artifact_name:
+    description: Name of the uploaded image artifact
+    required: false
+    default: agent-image
+  archive_file:
+    description: Gzipped docker-archive file contained in the artifact
+    required: false
+    default: agent-image.tar.gz
 
 runs:
   using: composite
@@ -18,25 +26,36 @@ runs:
     - name: Download image artifact
       uses: actions/download-artifact@v8
       with:
-        name: agent-image
+        name: ${{ inputs.artifact_name }}
 
-    - name: Load Docker image
-      shell: bash
-      run: docker load < agent-image.tar.gz
-
-    - name: Authenticate to ACR
-      shell: bash
-      env:
-        ACR_ENDPOINT: ${{ inputs.acr_endpoint }}
-      run: az acr login --name "${ACR_ENDPOINT%.azurecr.io}"
-
-    - name: Tag and push image
+    # skopeo copies the archive straight to the registry, so no Docker daemon
+    # is required and the image digest is preserved.
+    - name: Push image to ACR
       shell: bash
       env:
         ACR_ENDPOINT: ${{ inputs.acr_endpoint }}
         IMAGE_NAME: ${{ inputs.image_name }}
         IMAGE_TAG: ${{ inputs.image_tag }}
+        ARCHIVE_FILE: ${{ inputs.archive_file }}
       run: |
-        FULL_IMAGE="${ACR_ENDPOINT}/${IMAGE_NAME}:${IMAGE_TAG}"
-        docker tag "${IMAGE_NAME}:${IMAGE_TAG}" "${FULL_IMAGE}"
-        docker push "${FULL_IMAGE}"
+        set -euo pipefail
+
+        gunzip --force "${ARCHIVE_FILE}"
+        ARCHIVE="${ARCHIVE_FILE%.gz}"
+
+        # Minted at runtime, so Actions cannot mask it automatically.
+        TOKEN=$(az acr login --name "${ACR_ENDPOINT%.azurecr.io}" --expose-token --query accessToken -o tsv)
+        echo "::add-mask::${TOKEN}"
+
+        AUTHFILE="${RUNNER_TEMP}/acr-auth.json"
+        trap 'skopeo logout --authfile "${AUTHFILE}" "${ACR_ENDPOINT}" >/dev/null 2>&1 || true; rm -f "${AUTHFILE}"' EXIT
+
+        skopeo login "${ACR_ENDPOINT}" \
+          --username 00000000-0000-0000-0000-000000000000 \
+          --password-stdin \
+          --authfile "${AUTHFILE}" <<< "${TOKEN}"
+
+        skopeo copy \
+          --authfile "${AUTHFILE}" \
+          "docker-archive:${ARCHIVE}" \
+          "docker://${ACR_ENDPOINT}/${IMAGE_NAME}:${IMAGE_TAG}"

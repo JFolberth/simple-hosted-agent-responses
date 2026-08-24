@@ -156,6 +156,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      # Built once here and replayed from the artifact so every registry and
+      # rerun receives the exact bytes that were smoke-tested.
       - name: Build Docker image
         id: set-tag
         run: |
