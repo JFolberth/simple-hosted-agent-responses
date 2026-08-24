@@ -60,7 +60,7 @@ variable "deployments" {
 variable "enable_web_iq" {
   type        = bool
   description = "Enable the optional Microsoft Web IQ connection and supporting Key Vault."
-  default     = true
+  default     = false
 }
 
 variable "web_iq_api_key" {
