@@ -4,11 +4,11 @@
 # Uses a "-tf" suffix on the environment name to avoid colliding with the Bicep deployment.
 # Change these values to match your target environment before running deploy-terraform.sh.
 
-environment_name        = "simple-hosted-agent-tf"
-resource_group_name     = "rg-simple-hosted-agent-tf"
+environment_name        = "simple-hosted-agent-webiq-tf"
+resource_group_name     = "rg-simple-hosted-agent-webiq-tf"
 location                = "swedencentral"
 ai_deployments_location = "swedencentral"
-ai_foundry_project_name = "ai-project-tf"
+ai_foundry_project_name = "ai-project-webiq-tf"
 
 # Web IQ is limited access and off by default. It is enabled here, so a deploy
 # using this file must also supply TF_VAR_web_iq_api_key='<key>'.
