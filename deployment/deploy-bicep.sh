@@ -22,7 +22,7 @@
 #   SMOKE_TEST=true|false                  default: true
 #   EVAL=true|false                        default: true
 #   AI_GATEWAY_ENDPOINT=<url>|""           default: https://apim-aigateway-dev-swe.azure-api.net ("" disables)
-#   AI_GATEWAY_SCOPE=<scope>               default: dd561f46-9618-4d83-9048-62b8af2b6ed2/.default
+#   AI_GATEWAY_API_KEY=<runtime key>       required when the gateway is enabled (never commit it)
 #   AI_GATEWAY_MODEL=<alias>               default: ai-account-zqlgzllnlf5io/gpt-5-4-mini
 
 set -euo pipefail
@@ -57,19 +57,27 @@ SOURCE_CODE_ENTRY_POINT='["python", "main.py"]'
 SOURCE_CODE_MAX_POLLING_SECONDS=600
 
 # APIM AI Gateway — when set, the agent routes model calls through the gateway
-# using Entra ID auth. Set AI_GATEWAY_ENDPOINT="" to use the Foundry project
-# endpoint directly. The token audience is the first-party "API Management AI
-# Gateway Data Plane" app; the model is addressed by its gateway alias.
+# using a runtime access key (sent as the api-key header). Set
+# AI_GATEWAY_ENDPOINT="" to use the Foundry project endpoint directly. The
+# model is addressed by its gateway alias. The key is never stored in this repo:
+# pass it via the environment. NOTE: it is written to the agent version's
+# environment_variables, so anyone who can read the agent definition can read it.
 AI_GATEWAY_ENDPOINT="${AI_GATEWAY_ENDPOINT-https://apim-aigateway-dev-swe.azure-api.net}"
 AI_GATEWAY_ENDPOINT="${AI_GATEWAY_ENDPOINT%/}"
-AI_GATEWAY_SCOPE="${AI_GATEWAY_SCOPE:-dd561f46-9618-4d83-9048-62b8af2b6ed2/.default}"
 AI_GATEWAY_MODEL="${AI_GATEWAY_MODEL:-ai-account-zqlgzllnlf5io/gpt-5-4-mini}"
 if [ -n "${AI_GATEWAY_ENDPOINT}" ]; then
-  GATEWAY_ENV_JSON=$(AI_GATEWAY_ENDPOINT="${AI_GATEWAY_ENDPOINT}" AI_GATEWAY_SCOPE="${AI_GATEWAY_SCOPE}" AI_GATEWAY_MODEL="${AI_GATEWAY_MODEL}" python3 -c \
-    'import json,os; print(json.dumps({k: os.environ[k] for k in ("AI_GATEWAY_ENDPOINT","AI_GATEWAY_SCOPE","AI_GATEWAY_MODEL")}))')
+  if [ -z "${AI_GATEWAY_API_KEY:-}" ]; then
+    echo "ERROR: AI_GATEWAY_API_KEY is not set. Create a runtime access key on the gateway's Keys page," >&2
+    echo "       then run: AI_GATEWAY_API_KEY=<key> ./deployment/deploy-bicep.sh ..." >&2
+    echo "       (or set AI_GATEWAY_ENDPOINT=\"\" to bypass the gateway)." >&2
+    exit 1
+  fi
+  GATEWAY_ENV_JSON=$(AI_GATEWAY_ENDPOINT="${AI_GATEWAY_ENDPOINT}" AI_GATEWAY_MODEL="${AI_GATEWAY_MODEL}" AI_GATEWAY_API_KEY="${AI_GATEWAY_API_KEY}" python3 -c \
+    'import json,os; print(json.dumps({k: os.environ[k] for k in ("AI_GATEWAY_ENDPOINT","AI_GATEWAY_MODEL","AI_GATEWAY_API_KEY")}))')
 else
   GATEWAY_ENV_JSON='{}'
 fi
+export GATEWAY_ENV_JSON
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Argument parsing
@@ -238,7 +246,7 @@ if [ "$IMAGE_BASED_AGENT" = true ]; then
   # ───────────────────────────────────────────────────────────────────────────
   echo "==> Deploying image-based hosted agent via Foundry data plane..."
   AGENT_REQUEST_BODY=$(python3 - <<EOF
-import json
+import json, os
 body = {
   "definition": {
     "kind": "hosted",
@@ -247,7 +255,7 @@ body = {
     "memory": "0.5Gi",
     "environment_variables": {
       "AZURE_AI_MODEL_DEPLOYMENT_NAME": "${MODEL_DEPLOYMENT_NAME}",
-      **json.loads('${GATEWAY_ENV_JSON}')
+      **json.loads(os.environ["GATEWAY_ENV_JSON"])
     },
     "image": "${FULL_IMAGE}"
   }
@@ -306,7 +314,7 @@ if [ "$SOURCE_CODE_BASED_AGENT" = true ]; then
   # `container_protocol_versions` (the image endpoint requires the latter).
   # The server rejects the wrong field name with HTTP 400.
   python3 - <<EOF > "${SOURCE_CODE_METADATA}"
-import json
+import json, os
 body = {
   "definition": {
     "kind": "hosted",
@@ -315,7 +323,7 @@ body = {
     "memory": "${SOURCE_CODE_MEMORY}",
     "environment_variables": {
       "AZURE_AI_MODEL_DEPLOYMENT_NAME": "${MODEL_DEPLOYMENT_NAME}",
-      **json.loads('${GATEWAY_ENV_JSON}')
+      **json.loads(os.environ["GATEWAY_ENV_JSON"])
     },
     "code_configuration": {
       "runtime": "${SOURCE_CODE_RUNTIME}",
@@ -405,7 +413,7 @@ else
     SMOKE_ARGS+=(--agent-name "${SOURCE_CODE_AGENT_NAME}")
   fi
   SMOKETEST_RUNNER="$(mktemp -t smoke-tests.XXXXXX.py)"
-  trap 'rm -f "$SMOKETEST_RUNNER"' EXIT
+  trap 'rm -f "$SMOKETEST_RUNNER"; rm -rf "${SOURCE_CODE_TMPDIR:-}"' EXIT
   echo "    Fetching runner from JFolberth/ai-smoketest@${SMOKETEST_RUNNER_REF}..."
   curl -fsSL "${SMOKETEST_RUNNER_URL}" -o "${SMOKETEST_RUNNER}"
   FOUNDRY_TOKEN="${FOUNDRY_TOKEN}" python3 "${SMOKETEST_RUNNER}" "${SMOKE_ARGS[@]}"
