@@ -10,6 +10,7 @@ from agent_framework.openai import OpenAIChatClient
 from agent_framework_foundry_hosting import FoundryToolbox, ResponsesHostServer
 from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
+from openai import AsyncOpenAI, DefaultAsyncHttpxClient
 
 # Load environment variables from .env file
 load_dotenv()
@@ -31,14 +32,22 @@ def create_client(credential):
 
     api_key = os.environ["AI_GATEWAY_API_KEY"]
     logger.info("Using AI Gateway at %s", gateway_endpoint)
+
+    async def drop_authorization(request):
+        # The gateway rejects requests carrying both api-key and Authorization.
+        request.headers.pop("Authorization", None)
+
+    async_client = AsyncOpenAI(
+        base_url=f"{gateway_endpoint}/default/models/openai/v1",
+        # Placeholder to satisfy the SDK; the real key goes in the api-key header.
+        api_key="unused",
+        default_headers={"api-key": api_key},
+        http_client=DefaultAsyncHttpxClient(event_hooks={"request": [drop_authorization]}),
+    )
     return OpenAIChatClient(
         # The gateway addresses models by alias, not by Foundry deployment name.
         model=os.getenv("AI_GATEWAY_MODEL") or model,
-        base_url=f"{gateway_endpoint}/default/models/openai/v1",
-        # The gateway reads its runtime access key from the api-key header; the
-        # SDK's own api_key is only a placeholder to satisfy the client.
-        api_key="unused",
-        default_headers={"api-key": api_key},
+        async_client=async_client,
     )
 
 
