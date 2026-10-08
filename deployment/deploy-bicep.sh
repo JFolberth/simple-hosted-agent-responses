@@ -21,6 +21,9 @@
 #   SKIP_RBAC=true|false                   default: false
 #   SMOKE_TEST=true|false                  default: true
 #   EVAL=true|false                        default: true
+#   AI_GATEWAY_ENDPOINT=<url>|""           default: https://apim-aigateway-dev-swe.azure-api.net ("" disables)
+#   AI_GATEWAY_SCOPE=<scope>               default: dd561f46-9618-4d83-9048-62b8af2b6ed2/.default
+#   AI_GATEWAY_MODEL=<alias>               default: ai-account-zqlgzllnlf5io/gpt-5-4-mini
 
 set -euo pipefail
 
@@ -31,8 +34,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # ─────────────────────────────────────────────────────────────────────────────
 # Configuration — edit these to match your environment
 # ─────────────────────────────────────────────────────────────────────────────
-ENVIRONMENT_NAME="simple-hosted-agent3"
-LOCATION="eastus"
+ENVIRONMENT_NAME="hosted-agent-ai-gateway"
+LOCATION="swedencentral"
 AGENT_NAME="agent-framework-agent-basic-responses"
 AGENT_SOURCE_DIR="${REPO_ROOT}/src/agent-framework/responses/basic"
 AGENT_SOURCE_GIT_PATH="src/agent-framework/responses/basic"
@@ -52,6 +55,21 @@ SOURCE_CODE_MEMORY="0.5Gi"
 SOURCE_CODE_RUNTIME="python_3_13"
 SOURCE_CODE_ENTRY_POINT='["python", "main.py"]'
 SOURCE_CODE_MAX_POLLING_SECONDS=600
+
+# APIM AI Gateway — when set, the agent routes model calls through the gateway
+# using Entra ID auth. Set AI_GATEWAY_ENDPOINT="" to use the Foundry project
+# endpoint directly. The token audience is the first-party "API Management AI
+# Gateway Data Plane" app; the model is addressed by its gateway alias.
+AI_GATEWAY_ENDPOINT="${AI_GATEWAY_ENDPOINT-https://apim-aigateway-dev-swe.azure-api.net}"
+AI_GATEWAY_ENDPOINT="${AI_GATEWAY_ENDPOINT%/}"
+AI_GATEWAY_SCOPE="${AI_GATEWAY_SCOPE:-dd561f46-9618-4d83-9048-62b8af2b6ed2/.default}"
+AI_GATEWAY_MODEL="${AI_GATEWAY_MODEL:-ai-account-zqlgzllnlf5io/gpt-5-4-mini}"
+if [ -n "${AI_GATEWAY_ENDPOINT}" ]; then
+  GATEWAY_ENV_JSON=$(AI_GATEWAY_ENDPOINT="${AI_GATEWAY_ENDPOINT}" AI_GATEWAY_SCOPE="${AI_GATEWAY_SCOPE}" AI_GATEWAY_MODEL="${AI_GATEWAY_MODEL}" python3 -c \
+    'import json,os; print(json.dumps({k: os.environ[k] for k in ("AI_GATEWAY_ENDPOINT","AI_GATEWAY_SCOPE","AI_GATEWAY_MODEL")}))')
+else
+  GATEWAY_ENV_JSON='{}'
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Argument parsing
@@ -228,7 +246,8 @@ body = {
     "cpu": "0.25",
     "memory": "0.5Gi",
     "environment_variables": {
-      "AZURE_AI_MODEL_DEPLOYMENT_NAME": "${MODEL_DEPLOYMENT_NAME}"
+      "AZURE_AI_MODEL_DEPLOYMENT_NAME": "${MODEL_DEPLOYMENT_NAME}",
+      **json.loads('${GATEWAY_ENV_JSON}')
     },
     "image": "${FULL_IMAGE}"
   }
@@ -295,7 +314,8 @@ body = {
     "cpu": "${SOURCE_CODE_CPU}",
     "memory": "${SOURCE_CODE_MEMORY}",
     "environment_variables": {
-      "AZURE_AI_MODEL_DEPLOYMENT_NAME": "${MODEL_DEPLOYMENT_NAME}"
+      "AZURE_AI_MODEL_DEPLOYMENT_NAME": "${MODEL_DEPLOYMENT_NAME}",
+      **json.loads('${GATEWAY_ENV_JSON}')
     },
     "code_configuration": {
       "runtime": "${SOURCE_CODE_RUNTIME}",

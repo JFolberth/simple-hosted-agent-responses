@@ -6,8 +6,9 @@ import os
 
 from agent_framework import Agent
 from agent_framework.foundry import FoundryChatClient
+from agent_framework.openai import OpenAIChatClient
 from agent_framework_foundry_hosting import FoundryToolbox, ResponsesHostServer
-from azure.identity import DefaultAzureCredential
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -16,13 +17,31 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
+def create_client(credential):
+    """Route model calls through the APIM AI Gateway when configured."""
+    gateway_endpoint = os.getenv("AI_GATEWAY_ENDPOINT", "").rstrip("/")
+    model = os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"]
+
+    if not gateway_endpoint:
+        return FoundryChatClient(
+            project_endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
+            model=model,
+            credential=credential,
+        )
+
+    scope = os.environ["AI_GATEWAY_SCOPE"]
+    logger.info("Using AI Gateway at %s", gateway_endpoint)
+    return OpenAIChatClient(
+        # The gateway addresses models by alias, not by Foundry deployment name.
+        model=os.getenv("AI_GATEWAY_MODEL") or model,
+        base_url=f"{gateway_endpoint}/default/models/openai/v1",
+        api_key=get_bearer_token_provider(credential, scope),
+    )
+
+
 async def main():
     credential = DefaultAzureCredential()
-    client = FoundryChatClient(
-        project_endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
-        model=os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"],
-        credential=credential,
-    )
+    client = create_client(credential)
 
     toolbox = None
     toolbox_endpoint = os.getenv("TOOLBOX_MCP_ENDPOINT")
