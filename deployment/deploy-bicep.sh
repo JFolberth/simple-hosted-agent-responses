@@ -21,9 +21,6 @@
 #   SKIP_RBAC=true|false                   default: false
 #   SMOKE_TEST=true|false                  default: true
 #   EVAL=true|false                        default: true
-#   AI_GATEWAY_ENDPOINT=<url>|""           default: https://apim-aigateway-dev-swe.azure-api.net ("" disables)
-#   AI_GATEWAY_API_KEY=<runtime key>       required when the gateway is enabled (never commit it)
-#   AI_GATEWAY_MODEL=<alias>               default: ai-account-zqlgzllnlf5io/gpt-5-4-mini
 
 set -euo pipefail
 
@@ -34,7 +31,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # ─────────────────────────────────────────────────────────────────────────────
 # Configuration — edit these to match your environment
 # ─────────────────────────────────────────────────────────────────────────────
-ENVIRONMENT_NAME="hosted-agent-ai-gateway"
+ENVIRONMENT_NAME="simple-hosted-agent-bicep"
 LOCATION="swedencentral"
 AGENT_NAME="agent-framework-agent-basic-responses"
 AGENT_SOURCE_DIR="${REPO_ROOT}/src/agent-framework/responses/basic"
@@ -55,29 +52,6 @@ SOURCE_CODE_MEMORY="0.5Gi"
 SOURCE_CODE_RUNTIME="python_3_13"
 SOURCE_CODE_ENTRY_POINT='["python", "main.py"]'
 SOURCE_CODE_MAX_POLLING_SECONDS=600
-
-# APIM AI Gateway — when set, the agent routes model calls through the gateway
-# using a runtime access key (sent as the api-key header). Set
-# AI_GATEWAY_ENDPOINT="" to use the Foundry project endpoint directly. The
-# model is addressed by its gateway alias. The key is never stored in this repo:
-# pass it via the environment. NOTE: it is written to the agent version's
-# environment_variables, so anyone who can read the agent definition can read it.
-AI_GATEWAY_ENDPOINT="${AI_GATEWAY_ENDPOINT-https://apim-aigateway-dev-swe.azure-api.net}"
-AI_GATEWAY_ENDPOINT="${AI_GATEWAY_ENDPOINT%/}"
-AI_GATEWAY_MODEL="${AI_GATEWAY_MODEL:-ai-account-zqlgzllnlf5io/gpt-5-4-mini}"
-if [ -n "${AI_GATEWAY_ENDPOINT}" ]; then
-  if [ -z "${AI_GATEWAY_API_KEY:-}" ]; then
-    echo "ERROR: AI_GATEWAY_API_KEY is not set. Create a runtime access key on the gateway's Keys page," >&2
-    echo "       then run: AI_GATEWAY_API_KEY=<key> ./deployment/deploy-bicep.sh ..." >&2
-    echo "       (or set AI_GATEWAY_ENDPOINT=\"\" to bypass the gateway)." >&2
-    exit 1
-  fi
-  GATEWAY_ENV_JSON=$(AI_GATEWAY_ENDPOINT="${AI_GATEWAY_ENDPOINT}" AI_GATEWAY_MODEL="${AI_GATEWAY_MODEL}" AI_GATEWAY_API_KEY="${AI_GATEWAY_API_KEY}" python3 -c \
-    'import json,os; print(json.dumps({k: os.environ[k] for k in ("AI_GATEWAY_ENDPOINT","AI_GATEWAY_MODEL","AI_GATEWAY_API_KEY")}))')
-else
-  GATEWAY_ENV_JSON='{}'
-fi
-export GATEWAY_ENV_JSON
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Argument parsing
@@ -246,7 +220,7 @@ if [ "$IMAGE_BASED_AGENT" = true ]; then
   # ───────────────────────────────────────────────────────────────────────────
   echo "==> Deploying image-based hosted agent via Foundry data plane..."
   AGENT_REQUEST_BODY=$(python3 - <<EOF
-import json, os
+import json
 body = {
   "definition": {
     "kind": "hosted",
@@ -254,8 +228,7 @@ body = {
     "cpu": "0.25",
     "memory": "0.5Gi",
     "environment_variables": {
-      "AZURE_AI_MODEL_DEPLOYMENT_NAME": "${MODEL_DEPLOYMENT_NAME}",
-      **json.loads(os.environ["GATEWAY_ENV_JSON"])
+      "AZURE_AI_MODEL_DEPLOYMENT_NAME": "${MODEL_DEPLOYMENT_NAME}"
     },
     "image": "${FULL_IMAGE}"
   }
@@ -314,7 +287,7 @@ if [ "$SOURCE_CODE_BASED_AGENT" = true ]; then
   # `container_protocol_versions` (the image endpoint requires the latter).
   # The server rejects the wrong field name with HTTP 400.
   python3 - <<EOF > "${SOURCE_CODE_METADATA}"
-import json, os
+import json
 body = {
   "definition": {
     "kind": "hosted",
@@ -322,8 +295,7 @@ body = {
     "cpu": "${SOURCE_CODE_CPU}",
     "memory": "${SOURCE_CODE_MEMORY}",
     "environment_variables": {
-      "AZURE_AI_MODEL_DEPLOYMENT_NAME": "${MODEL_DEPLOYMENT_NAME}",
-      **json.loads(os.environ["GATEWAY_ENV_JSON"])
+      "AZURE_AI_MODEL_DEPLOYMENT_NAME": "${MODEL_DEPLOYMENT_NAME}"
     },
     "code_configuration": {
       "runtime": "${SOURCE_CODE_RUNTIME}",

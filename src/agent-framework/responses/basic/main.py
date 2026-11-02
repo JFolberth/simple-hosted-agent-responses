@@ -6,11 +6,9 @@ import os
 
 from agent_framework import Agent
 from agent_framework.foundry import FoundryChatClient
-from agent_framework.openai import OpenAIChatClient
 from agent_framework_foundry_hosting import FoundryToolbox, ResponsesHostServer
 from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
-from openai import AsyncOpenAI, DefaultAsyncHttpxClient
 
 # Load environment variables from .env file
 load_dotenv()
@@ -18,42 +16,13 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
-def create_client(credential):
-    """Route model calls through the APIM AI Gateway when configured."""
-    gateway_endpoint = os.getenv("AI_GATEWAY_ENDPOINT", "").rstrip("/")
-    model = os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"]
-
-    if not gateway_endpoint:
-        return FoundryChatClient(
-            project_endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
-            model=model,
-            credential=credential,
-        )
-
-    api_key = os.environ["AI_GATEWAY_API_KEY"]
-    logger.info("Using AI Gateway at %s", gateway_endpoint)
-
-    async def drop_authorization(request):
-        # The gateway rejects requests carrying both api-key and Authorization.
-        request.headers.pop("Authorization", None)
-
-    async_client = AsyncOpenAI(
-        base_url=f"{gateway_endpoint}/default/models/openai/v1",
-        # Placeholder to satisfy the SDK; the real key goes in the api-key header.
-        api_key="unused",
-        default_headers={"api-key": api_key},
-        http_client=DefaultAsyncHttpxClient(event_hooks={"request": [drop_authorization]}),
-    )
-    return OpenAIChatClient(
-        # The gateway addresses models by alias, not by Foundry deployment name.
-        model=os.getenv("AI_GATEWAY_MODEL") or model,
-        async_client=async_client,
-    )
-
-
 async def main():
     credential = DefaultAzureCredential()
-    client = create_client(credential)
+    client = FoundryChatClient(
+        project_endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
+        model=os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"],
+        credential=credential,
+    )
 
     toolbox = None
     toolbox_endpoint = os.getenv("TOOLBOX_MCP_ENDPOINT")
