@@ -8,6 +8,8 @@ An [Agent Framework](https://github.com/microsoft/agent-framework) agent hosted 
 
 The agent uses `FoundryChatClient` from the Agent Framework to create a Responses client from the project endpoint and model deployment. The agent supports both streaming (SSE events) and non-streaming (JSON) response modes.
 
+Model calls go directly to Foundry using `DefaultAzureCredential`, with no gateway or API key configuration required. The runtime supplies `FOUNDRY_PROJECT_ENDPOINT`; the deployment sets `AZURE_AI_MODEL_DEPLOYMENT_NAME`.
+
 See [main.py](main.py) for the full implementation.
 
 ### Agent Hosting

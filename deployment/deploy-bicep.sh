@@ -31,8 +31,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # ─────────────────────────────────────────────────────────────────────────────
 # Configuration — edit these to match your environment
 # ─────────────────────────────────────────────────────────────────────────────
-ENVIRONMENT_NAME="simple-hosted-agent3"
-LOCATION="eastus"
+ENVIRONMENT_NAME="simple-hosted-agent-bicep"
+LOCATION="swedencentral"
 AGENT_NAME="agent-framework-agent-basic-responses"
 AGENT_SOURCE_DIR="${REPO_ROOT}/src/agent-framework/responses/basic"
 AGENT_SOURCE_GIT_PATH="src/agent-framework/responses/basic"
@@ -385,7 +385,7 @@ else
     SMOKE_ARGS+=(--agent-name "${SOURCE_CODE_AGENT_NAME}")
   fi
   SMOKETEST_RUNNER="$(mktemp -t smoke-tests.XXXXXX.py)"
-  trap 'rm -f "$SMOKETEST_RUNNER"' EXIT
+  trap 'rm -f "$SMOKETEST_RUNNER"; rm -rf "${SOURCE_CODE_TMPDIR:-}"' EXIT
   echo "    Fetching runner from JFolberth/ai-smoketest@${SMOKETEST_RUNNER_REF}..."
   curl -fsSL "${SMOKETEST_RUNNER_URL}" -o "${SMOKETEST_RUNNER}"
   FOUNDRY_TOKEN="${FOUNDRY_TOKEN}" python3 "${SMOKETEST_RUNNER}" "${SMOKE_ARGS[@]}"
